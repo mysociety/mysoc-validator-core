@@ -1,0 +1,4 @@
+#!/bin/bash
+
+script/develop
+uv run pytest .

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+maturin build -m mysoc_validator_core/Cargo.toml

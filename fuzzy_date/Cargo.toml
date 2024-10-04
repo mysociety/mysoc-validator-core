@@ -1,0 +1,18 @@
+[package]
+name = "fuzzy_date"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.38"
+
+[lib]
+crate-type = [ "rlib"]
+
+[dependencies.pyo3]
+version = "0.22.2"
+features = ["chrono"]
+
+[profile.release]
+lto = true
+opt-level = 3

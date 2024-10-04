@@ -1,0 +1,8 @@
+[package]
+name = "mysoc_validator_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fuzzy_date = { path = "../fuzzy_date" }
+pyo3 = { version = "0.22.2" }

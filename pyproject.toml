@@ -1,0 +1,10 @@
+[project]
+name = "mysoc-validator-core"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "maturin>=1.7.4",
+    "pip>=24.2",
+    "pytest>=8.3.3",
+]
