@@ -4,11 +4,12 @@ use pyo3::prelude::*;
 use pyo3::types::{PyString, PyType};
 use std::fmt;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 
-enum DateCompleteness {
+pub enum DateCompleteness {
     YearOnly,
     YearAndMonth,
     FullDate,
@@ -105,8 +106,7 @@ fn determine_completeness(date: &str) -> DateCompleteness {
         _ => DateCompleteness::NotADate,
     }
 }
-
-#[pyclass]
+#[pyclass(subclass, module = "fuzzy_date")]
 #[derive(Debug, Clone)]
 pub struct FuzzyDate {
     #[pyo3(get)]
@@ -114,6 +114,24 @@ pub struct FuzzyDate {
     #[pyo3(get)]
     latest_date: NaiveDate,
     completeness: DateCompleteness,
+}
+impl Serialize for FuzzyDate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.isoformat())
+    }
+}
+
+impl<'de> Deserialize<'de> for FuzzyDate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        FuzzyDate::fromisoformat(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 #[pymethods]
@@ -152,7 +170,7 @@ impl FuzzyDate {
             Ok(self.eq(&other_date))
         } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
             Ok(self.eq(&other_date))
-        } else if let Ok(other_date_str) = other.extract::<&str>() {
+        } else if let Ok(other_date_str) = other.extract::<String>() {
             Ok(self.isoformat() == other_date_str)
         } else {
             Err(PyTypeError::new_err(
@@ -220,6 +238,10 @@ impl FuzzyDate {
             latest_date: latest_date,
             completeness: get_paired_completeness(&earliest_date, &latest_date),
         }
+    }
+
+    pub fn is_approximate(&self) -> bool {
+        self.completeness != DateCompleteness::FullDate
     }
 
     pub fn set_earliest(&mut self, earliest_date: NaiveDate) {
@@ -308,6 +330,18 @@ impl FuzzyDate {
     }
 }
 
+impl From<String> for FuzzyDate {
+    fn from(s: String) -> FuzzyDate {
+        FuzzyDate::fromisoformat(&s).unwrap()
+    }
+}
+
+impl From<FuzzyDate> for String {
+    fn from(fuzzy_date: FuzzyDate) -> String {
+        fuzzy_date.isoformat()
+    }
+}
+
 impl fmt::Display for FuzzyDate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.isoformat())
@@ -334,6 +368,15 @@ impl PartialEq<FuzzyDate> for FuzzyDate {
     }
 }
 
+impl PartialEq<str> for FuzzyDate {
+    fn eq(&self, other: &str) -> bool {
+        match FuzzyDate::fromisoformat(other) {
+            Ok(date) => self == &date,
+            Err(_) => false,
+        }
+    }
+}
+
 impl PartialEq<NaiveDate> for FuzzyDate {
     fn eq(&self, other: &NaiveDate) -> bool {
         self.approx_equal(other)
@@ -350,6 +393,12 @@ impl PartialOrd for FuzzyDate {
         } else {
             Some(std::cmp::Ordering::Equal)
         }
+    }
+}
+
+impl Ord for FuzzyDate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 

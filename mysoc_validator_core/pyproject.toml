@@ -3,5 +3,8 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
+python-source = "python"
+module-name = "mysoc_validator_core._mysoc_validator_core"
 # "extension-module" tells pyo3 we want to build an extension modul
 features = ["pyo3/extension-module"]
+

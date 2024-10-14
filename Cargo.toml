@@ -1,5 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "fuzzy_date", "mysoc_validator_core",
+    "fuzzy_date", "mysoc_validator_core", "popolo_validator",
 ]
+
+
+[profile.release]
+lto = true
+opt-level = 3

@@ -1,12 +1,17 @@
-use pyo3::prelude::*;
+use std::env;
 
-use fuzzy_date::FuzzyDate;
 use popolo_validator::Popolo;
 
-#[pyfunction]
-fn cli_convert(popolo_location: &str, verbose: bool, format_file: bool) -> PyResult<()> {
+fn main() {
     // Get the command line argument for the postcode
-
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Please provide a popolo file as an argument");
+        std::process::exit(1);
+    }
+    let popolo_location = &args[1];
+    let verbose = args.contains(&String::from("--verbose"));
+    let format_file = args.contains(&String::from("--format"));
     // read in the file to a string
     let json_str = std::fs::read_to_string(popolo_location).expect("Unable to read file");
 
@@ -32,7 +37,6 @@ fn cli_convert(popolo_location: &str, verbose: bool, format_file: bool) -> PyRes
                 let formatted = pop.model_dump_json();
                 std::fs::write(format_location, formatted).expect("Unable to write file");
             }
-            Ok(())
         }
         Err(e) => {
             println!("Popolo file has data issues. Use --verbose for more information");
@@ -53,15 +57,4 @@ fn cli_convert(popolo_location: &str, verbose: bool, format_file: bool) -> PyRes
             std::process::exit(1);
         }
     }
-}
-
-/// A Python module implemented in Rust. The name of this function must match
-/// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
-/// import the module.
-#[pymodule]
-fn _mysoc_validator_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<FuzzyDate>()?;
-    m.add_class::<Popolo>()?;
-    m.add_function(wrap_pyfunction!(cli_convert, m)?)?;
-    Ok(())
 }

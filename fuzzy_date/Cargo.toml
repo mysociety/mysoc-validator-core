@@ -5,9 +5,11 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
+serde = "1.0.203"
+serde_derive = "1.0.203"
 
 [lib]
-crate-type = [ "rlib"]
+crate-type = ["rlib"]
 
 [dependencies.pyo3]
 version = "0.22.2"

@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 fuzzy_date = { path = "../fuzzy_date" }
-pyo3 = { version = "0.22.2" }
+popolo_validator = { path = "../popolo_validator" }
+pyo3 = { version = "0.22.2" , features = ["abi3-py39"] }
