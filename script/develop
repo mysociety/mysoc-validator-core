@@ -1,4 +1,4 @@
 #!/bin/bash
 
 script/update
-maturin develop -m mysoc_validator_core/Cargo.toml
+uv run maturin develop -m mysoc_validator_core/Cargo.toml

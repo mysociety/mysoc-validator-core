@@ -2,7 +2,7 @@ use fuzzy_date::FuzzyDate;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use pyo3::prelude::*;
-use pyo3::types::{PyIterator, PyType};
+use pyo3::types::PyType;
 use regex::Regex;
 use serde::de::{self, Deserialize, Deserializer};
 use serde::Serialize;
@@ -71,6 +71,39 @@ enum OrgType {
 enum NameType {
     Main,
     Alternate,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[pyclass(eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipReason {
+    #[serde(rename = "")]
+    Blank,
+    Accession,
+    Appointed,
+    BecamePeer,
+    BecamePresidingOfficer,
+    ByElection,
+    ChangedParty,
+    DeclaredVoid,
+    Devolution,
+    Died,
+    Disqualified,
+    Dissolution,
+    Election,
+    GeneralElection,
+    GeneralElectionNotStanding,
+    GeneralElectionProbably,
+    GeneralElectionStanding,
+    RecallPetition,
+    RegionalElection,
+    Reinstated,
+    ReplacedInRegion,
+    Resigned,
+    Retired,
+    WhipRemoved,
+    WhipRestored,
+    Unknown,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -163,7 +196,7 @@ macro_rules! create_interface {
                 self.root.pop()
             }
 
-            pub fn iter(&self) -> std::slice::Iter<$type> {
+            pub fn iter(&self) -> std::slice::Iter<'_, $type> {
                 self.root.iter()
             }
         }
@@ -360,7 +393,7 @@ pub struct Membership {
     )]
     end_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    end_reason: Option<String>,
+    end_reason: Option<MembershipReason>,
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     identifiers: Option<Vec<SimpleIdentifer>>,
@@ -387,7 +420,7 @@ pub struct Membership {
     )]
     start_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    start_reason: Option<String>,
+    start_reason: Option<MembershipReason>,
 }
 
 // Regex Trait
@@ -560,6 +593,7 @@ trait HasId {
 }
 
 // Common trait for all name variants
+#[allow(dead_code)]
 trait NiceName {
     fn nice_name(&self) -> String;
 }
