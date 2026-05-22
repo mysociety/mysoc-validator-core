@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Format all Rust crates in this workspace.
+cargo fmt --all

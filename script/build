@@ -1,3 +1,9 @@
 #!/bin/bash
 
-maturin build -m mysoc_validator_core/Cargo.toml
+uv run maturin build -m mysoc_validator_fast/Cargo.toml
+
+# Regenerate Python type stubs from the annotated Rust source.
+# The binary writes _mysoc_validator_fast.pyi to the current directory,
+# so we run it from inside the Python package directory.
+(cd mysoc_validator_fast/python/mysoc_validator_fast && \
+    cargo run --manifest-path ../../../mysoc_validator_fast/Cargo.toml --bin stub_gen)
