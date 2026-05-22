@@ -1,12 +1,11 @@
+use chrono::NaiveDate;
 use fuzzy_date::FuzzyDate;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use pyo3::prelude::*;
-use pyo3::types::PyType;
 use regex::Regex;
 use serde::de::{self, Deserialize, Deserializer};
 use serde::Serialize;
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -39,8 +38,7 @@ fn is_default_end_date(date: &FuzzyDate) -> bool {
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(untagged, deny_unknown_fields)]
-#[pyclass]
-enum NameOptions {
+pub enum NameOptions {
     BasicPersonName(BasicPersonName),
     LordName(LordName),
     AltName(AltName),
@@ -58,23 +56,20 @@ pub enum ValidatorType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
-#[pyclass(eq)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-enum OrgType {
+pub enum OrgType {
     Party,
     Chamber,
     Metro,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[pyclass(eq)]
-enum NameType {
+pub enum NameType {
     Main,
     Alternate,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[pyclass(eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MembershipReason {
     #[serde(rename = "")]
@@ -106,9 +101,73 @@ pub enum MembershipReason {
     Unknown,
 }
 
+impl MembershipReason {
+    pub fn as_str(&self) -> &str {
+        match self {
+            MembershipReason::Blank => "",
+            MembershipReason::Accession => "accession",
+            MembershipReason::Appointed => "appointed",
+            MembershipReason::BecamePeer => "became_peer",
+            MembershipReason::BecamePresidingOfficer => "became_presiding_officer",
+            MembershipReason::ByElection => "by_election",
+            MembershipReason::ChangedParty => "changed_party",
+            MembershipReason::DeclaredVoid => "declared_void",
+            MembershipReason::Devolution => "devolution",
+            MembershipReason::Died => "died",
+            MembershipReason::Disqualified => "disqualified",
+            MembershipReason::Dissolution => "dissolution",
+            MembershipReason::Election => "election",
+            MembershipReason::GeneralElection => "general_election",
+            MembershipReason::GeneralElectionNotStanding => "general_election_not_standing",
+            MembershipReason::GeneralElectionProbably => "general_election_probably",
+            MembershipReason::GeneralElectionStanding => "general_election_standing",
+            MembershipReason::RecallPetition => "recall_petition",
+            MembershipReason::RegionalElection => "regional_election",
+            MembershipReason::Reinstated => "reinstated",
+            MembershipReason::ReplacedInRegion => "replaced_in_region",
+            MembershipReason::Resigned => "resigned",
+            MembershipReason::Retired => "retired",
+            MembershipReason::WhipRemoved => "whip_removed",
+            MembershipReason::WhipRestored => "whip_restored",
+            MembershipReason::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<MembershipReason> {
+        match s {
+            "" => Some(MembershipReason::Blank),
+            "accession" => Some(MembershipReason::Accession),
+            "appointed" => Some(MembershipReason::Appointed),
+            "became_peer" => Some(MembershipReason::BecamePeer),
+            "became_presiding_officer" => Some(MembershipReason::BecamePresidingOfficer),
+            "by_election" => Some(MembershipReason::ByElection),
+            "changed_party" => Some(MembershipReason::ChangedParty),
+            "declared_void" => Some(MembershipReason::DeclaredVoid),
+            "devolution" => Some(MembershipReason::Devolution),
+            "died" => Some(MembershipReason::Died),
+            "disqualified" => Some(MembershipReason::Disqualified),
+            "dissolution" => Some(MembershipReason::Dissolution),
+            "election" => Some(MembershipReason::Election),
+            "general_election" => Some(MembershipReason::GeneralElection),
+            "general_election_not_standing" => Some(MembershipReason::GeneralElectionNotStanding),
+            "general_election_probably" => Some(MembershipReason::GeneralElectionProbably),
+            "general_election_standing" => Some(MembershipReason::GeneralElectionStanding),
+            "recall_petition" => Some(MembershipReason::RecallPetition),
+            "regional_election" => Some(MembershipReason::RegionalElection),
+            "reinstated" => Some(MembershipReason::Reinstated),
+            "replaced_in_region" => Some(MembershipReason::ReplacedInRegion),
+            "resigned" => Some(MembershipReason::Resigned),
+            "retired" => Some(MembershipReason::Retired),
+            "whip_removed" => Some(MembershipReason::WhipRemoved),
+            "whip_restored" => Some(MembershipReason::WhipRestored),
+            "unknown" => Some(MembershipReason::Unknown),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Serialize, Debug, Clone)]
 #[serde(untagged, deny_unknown_fields)]
-#[pyclass]
 pub enum MembershipType {
     Membership(Membership),
     MembershipRedirect(MembershipRedirect),
@@ -116,58 +175,44 @@ pub enum MembershipType {
 
 #[derive(Serialize, Debug, Clone)]
 #[serde(untagged, deny_unknown_fields)]
-#[pyclass]
 pub enum PersonType {
     Person(Person),
     PersonRedirect(PersonRedirect),
 }
 
 #[derive(Serialize, Debug, Clone)]
-#[pyclass(get_all)]
-#[serde(untagged)]
-enum Identifier {
+pub enum Identifier {
     String(String),
     Int(i64),
 }
 
-// Defining the collection interfaces
-// has to be done as a macro because pyclass doesn't like generic types
+impl Identifier {
+    pub fn as_str(&self) -> String {
+        match self {
+            Identifier::String(s) => s.clone(),
+            Identifier::Int(i) => i.to_string(),
+        }
+    }
+}
+
+// Collection interfaces
 macro_rules! create_interface {
     ($name: ident, $type: ident) => {
         #[derive(Debug, Clone)]
-        #[pyclass(get_all)]
         pub struct $name {
             pub root: Vec<$type>,
             pub id_lookup: HashMap<String, usize>,
         }
 
-        #[pymethods]
         impl $name {
-            pub fn __getitem__(&self, py: Python, index: &str) -> Option<PyObject> {
-                self.get(index).map(|item| item.clone().into_py(py))
-            }
-
-            pub fn __len__(&self) -> usize {
-                self.len()
-            }
-
-            // print repr and the length
-            pub fn __str__(&self) -> String {
-                format!("{}: {}", stringify!($repr), self.len())
-            }
-
-            pub fn __contains__(&self, id: &str) -> bool {
-                self.id_lookup.contains_key(id)
-            }
-        }
-
-        impl $name {
-            // get the item from the id
             pub fn get(&self, id: &str) -> Option<&$type> {
                 self.id_lookup.get(id).map(|i| &self.root[*i])
             }
 
-            // id_lookup is a map of id to position in root
+            pub fn get_mut(&mut self, id: &str) -> Option<&mut $type> {
+                self.id_lookup.get(id).map(|i| &mut self.root[*i])
+            }
+
             pub fn set_lookup(&mut self) {
                 self.id_lookup = self
                     .root
@@ -199,17 +244,12 @@ macro_rules! create_interface {
             pub fn iter(&self) -> std::slice::Iter<'_, $type> {
                 self.root.iter()
             }
-        }
 
-        impl Iterator for $name {
-            type Item = $type;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                self.root.pop()
+            pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, $type> {
+                self.root.iter_mut()
             }
         }
 
-        // for borrowed values
         impl<'a> IntoIterator for &'a $name {
             type Item = &'a $type;
             type IntoIter = std::slice::Iter<'a, $type>;
@@ -253,178 +293,196 @@ pub struct ValidatorError {
     pub validator_type: ValidatorType,
 }
 
-#[pyclass(get_all)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct PersonRedirect {
-    id: String,
-    redirect: String,
+    pub id: String,
+    pub redirect: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass]
 pub struct LordName {
     #[serde(skip_serializing_if = "Option::is_none")]
-    additional_name: Option<String>,
+    pub additional_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    county: Option<String>,
+    pub county: Option<String>,
     #[serde(
         default = "default_end_date",
         skip_serializing_if = "is_default_end_date"
     )]
-    end_date: FuzzyDate,
+    pub end_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    given_name: Option<String>,
+    pub given_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    honorific_prefix: Option<String>,
+    pub honorific_prefix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    honorific_suffix: Option<String>,
+    pub honorific_suffix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    lordname: Option<String>,
+    pub lordname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    lordofname: Option<String>,
+    pub lordofname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    lordofname_full: Option<String>,
-    note: NameType,
+    pub lordofname_full: Option<String>,
+    pub note: NameType,
     #[serde(
         default = "default_start_date",
         skip_serializing_if = "is_default_start_date",
         deserialize_with = "empty_string_as_default_start_date",
         serialize_with = "serialize_default_start_date"
     )]
-    start_date: FuzzyDate,
+    pub start_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    surname: Option<String>,
+    pub surname: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[pyclass(get_all)]
 #[serde(deny_unknown_fields)]
 pub struct Link {
     #[serde(skip_serializing_if = "Option::is_none")]
-    note: Option<String>,
-    url: String,
+    pub note: Option<String>,
+    pub url: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[pyclass(get_all)]
 #[serde(deny_unknown_fields)]
 pub struct Shortcuts {
     #[serde(skip_serializing_if = "Option::is_none")]
-    current_constituency: Option<String>,
-    current_party: String,
+    pub current_constituency: Option<String>,
+    pub current_party: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass]
 pub struct BasicPersonName {
     #[serde(
         default = "default_end_date",
         skip_serializing_if = "is_default_end_date"
     )]
-    end_date: FuzzyDate,
-    family_name: String,
+    pub end_date: FuzzyDate,
+    pub family_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    given_name: Option<String>,
+    pub given_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    honorific_prefix: Option<String>,
-    note: NameType,
+    pub honorific_prefix: Option<String>,
+    pub note: NameType,
     #[serde(
         default = "default_start_date",
         skip_serializing_if = "is_default_start_date"
     )]
-    start_date: FuzzyDate,
+    pub start_date: FuzzyDate,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct Person {
     #[serde(skip_serializing_if = "Option::is_none")]
-    biography: Option<String>,
+    pub biography: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    birth_date: Option<FuzzyDate>,
+    pub birth_date: Option<FuzzyDate>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    death_date: Option<FuzzyDate>,
+    pub death_date: Option<FuzzyDate>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    gender: Option<String>,
-    id: String,
+    pub gender: Option<String>,
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    identifiers: Option<Vec<SimpleIdentifer>>,
+    pub identifiers: Option<Vec<SimpleIdentifer>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    image: Option<String>,
+    pub image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    links: Option<Vec<Link>>,
+    pub links: Option<Vec<Link>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    other_names: Option<Vec<NameOptions>>,
+    pub other_names: Option<Vec<NameOptions>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    national_identity: Option<String>,
+    pub national_identity: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    summary: Option<String>,
+    pub summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    shortcuts: Option<Shortcuts>,
+    pub shortcuts: Option<Shortcuts>,
+}
+
+impl Person {
+    pub fn names_on_date(&self, date: &NaiveDate) -> Vec<String> {
+        self.other_names
+            .as_ref()
+            .map(|names| {
+                names
+                    .iter()
+                    .filter(|n| {
+                        let (start, end) = n.date_range();
+                        start.earliest_date <= *date && *date <= end.latest_date
+                    })
+                    .map(|n| n.nice_name())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn get_identifier(&self, scheme: &str) -> Option<String> {
+        self.identifiers.as_ref()?.iter().find_map(|id| {
+            if id.scheme == scheme {
+                Some(id.identifier.as_str())
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[pyclass(get_all)]
 #[serde(deny_unknown_fields)]
 pub struct SimpleIdentifer {
-    identifier: Identifier,
-    scheme: String,
+    pub identifier: Identifier,
+    pub scheme: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct MembershipName {
-    family_name: String,
-    given_name: String,
+    pub family_name: String,
+    pub given_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct Membership {
     #[serde(
         default = "default_end_date",
         skip_serializing_if = "is_default_end_date"
     )]
-    end_date: FuzzyDate,
+    pub end_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    end_reason: Option<MembershipReason>,
-    id: String,
+    pub end_reason: Option<MembershipReason>,
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    identifiers: Option<Vec<SimpleIdentifer>>,
+    pub identifiers: Option<Vec<SimpleIdentifer>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    label: Option<String>,
+    pub label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<MembershipName>,
+    pub name: Option<MembershipName>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    on_behalf_of_id: Option<String>,
+    pub on_behalf_of_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    organization_id: Option<String>,
-    person_id: String,
+    pub organization_id: Option<String>,
+    pub person_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    post_id: Option<String>,
+    pub post_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>, // Exactly one end reason that should be a end_reason
+    pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<String>,
+    pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    source: Option<String>,
+    pub source: Option<String>,
     #[serde(
         default = "default_start_date",
         skip_serializing_if = "is_default_start_date"
     )]
-    start_date: FuzzyDate,
+    pub start_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
-    start_reason: Option<MembershipReason>,
+    pub start_reason: Option<MembershipReason>,
 }
 
 // Regex Trait
-
 trait RegexValidator {
     fn test_regex_values(&self) -> ValidatorErrorCollection;
 }
@@ -443,23 +501,18 @@ macro_rules! regex_property {
 impl RegexValidator for Popolo {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         for person in &self.persons {
             errors.extend(person.test_regex_values());
         }
-
         for membership in &self.memberships {
             errors.extend(membership.test_regex_values());
         }
-
         for post in &self.posts {
             errors.extend(post.test_regex_values());
         }
-
         for organization in &self.organizations {
             errors.extend(organization.test_regex_values());
         }
-
         errors
     }
 }
@@ -467,8 +520,8 @@ impl RegexValidator for Popolo {
 impl RegexValidator for NameOptions {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         match self {
-            NameOptions::BasicPersonName(_name) => Vec::new(),
-            NameOptions::LordName(_name) => Vec::new(),
+            NameOptions::BasicPersonName(_) => Vec::new(),
+            NameOptions::LordName(_) => Vec::new(),
             NameOptions::AltName(name) => name.test_regex_values(),
         }
     }
@@ -477,11 +530,9 @@ impl RegexValidator for NameOptions {
 impl RegexValidator for AltName {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         if let Some(organization_id) = &self.organization_id {
             regex_property!(organization_id, ORG_ID, errors, "Organization ID");
         }
-
         errors
     }
 }
@@ -489,10 +540,8 @@ impl RegexValidator for AltName {
 impl RegexValidator for Organization {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         let org_id = &self.id;
         regex_property!(org_id, ORG_ID, errors, "Organization ID");
-
         errors
     }
 }
@@ -500,12 +549,10 @@ impl RegexValidator for Organization {
 impl RegexValidator for Post {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         let post_id = &self.id;
         let organization_id = &self.organization_id;
         regex_property!(post_id, POST_ID_REGEX, errors, "Post ID");
         regex_property!(organization_id, ORG_ID, errors, "Organization ID");
-
         errors
     }
 }
@@ -513,8 +560,8 @@ impl RegexValidator for Post {
 impl RegexValidator for MembershipType {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         match self {
-            MembershipType::Membership(membership) => membership.test_regex_values(),
-            MembershipType::MembershipRedirect(redirect) => redirect.test_regex_values(),
+            MembershipType::Membership(m) => m.test_regex_values(),
+            MembershipType::MembershipRedirect(r) => r.test_regex_values(),
         }
     }
 }
@@ -522,8 +569,8 @@ impl RegexValidator for MembershipType {
 impl RegexValidator for PersonType {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         match self {
-            PersonType::Person(person) => person.test_regex_values(),
-            PersonType::PersonRedirect(redirect) => redirect.test_regex_values(),
+            PersonType::Person(p) => p.test_regex_values(),
+            PersonType::PersonRedirect(r) => r.test_regex_values(),
         }
     }
 }
@@ -531,10 +578,8 @@ impl RegexValidator for PersonType {
 impl RegexValidator for Person {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         let person_id = &self.id;
         regex_property!(person_id, PERSON_ID_REGEX, errors, "Person ID");
-
         errors
     }
 }
@@ -542,12 +587,10 @@ impl RegexValidator for Person {
 impl RegexValidator for PersonRedirect {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         let person_id = &self.id;
         let redirect_id = &self.redirect;
         regex_property!(person_id, PERSON_ID_REGEX, errors, "Person ID");
         regex_property!(redirect_id, PERSON_ID_REGEX, errors, "Redirect ID");
-
         errors
     }
 }
@@ -555,12 +598,10 @@ impl RegexValidator for PersonRedirect {
 impl RegexValidator for MembershipRedirect {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         let member_id = &self.id;
         let redirect_id = &self.redirect;
         regex_property!(member_id, MEMBER_ID_REGEX, errors, "Member ID");
         regex_property!(redirect_id, MEMBER_ID_REGEX, errors, "Redirect ID");
-
         errors
     }
 }
@@ -568,7 +609,6 @@ impl RegexValidator for MembershipRedirect {
 impl RegexValidator for Membership {
     fn test_regex_values(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         let member_id = &self.id;
         let person_id = &self.person_id;
         regex_property!(member_id, MEMBER_ID_REGEX, errors, "Member ID");
@@ -582,28 +622,22 @@ impl RegexValidator for Membership {
         if let Some(on_behalf_of_id) = &self.on_behalf_of_id {
             regex_property!(on_behalf_of_id, ORG_ID, errors, "On Behalf Of ID");
         }
-
         errors
     }
 }
 
-// Trait to access the `id` field
 trait HasId {
     fn get_id(&self) -> &String;
 }
 
-// Common trait for all name variants
-#[allow(dead_code)]
-trait NiceName {
+pub trait NiceName {
     fn nice_name(&self) -> String;
 }
 
-// Define date range test
 trait ValidDateRange {
     fn is_valid_date_range(&self) -> ValidatorErrorCollection;
 }
 
-// Macro to implement the trait for any struct that has start_date and end_date
 macro_rules! impl_valid_date_range {
     ($struct_name:ident) => {
         impl ValidDateRange for $struct_name {
@@ -623,8 +657,6 @@ macro_rules! impl_valid_date_range {
         }
     };
 }
-
-// Define
 
 impl fmt::Display for ValidatorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -717,7 +749,6 @@ where
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     if s.is_empty() {
-        // stupid special case to be able to tell this one apart later
         FuzzyDate::fromisoformat("0001-01-02").map_err(de::Error::custom)
     } else {
         FuzzyDate::fromisoformat(&s).map_err(de::Error::custom)
@@ -728,7 +759,6 @@ fn serialize_default_start_date<S>(date: &FuzzyDate, serializer: S) -> Result<S:
 where
     S: serde::Serializer,
 {
-    // stupid special case for that one start date that's an empty string
     if date == &FuzzyDate::fromisoformat("0001-01-02").unwrap() {
         serializer.serialize_str("")
     } else {
@@ -736,17 +766,55 @@ where
     }
 }
 
+impl LordName {
+    pub fn name_variants(&self) -> Vec<String> {
+        // Peers with a lordname: only the full nice_name (adding the short form
+        // would collide with a different person who holds plain "Lord Smith")
+        if self.lordname.is_some() {
+            return vec![self.nice_name()];
+        }
+        // Bishops, earls-of-a-place, etc.: multiple transcript spellings exist
+        if let (Some(prefix), Some(place)) = (&self.honorific_prefix, &self.lordofname) {
+            let mut variants = vec![
+                format!("{} of {}", prefix, place),
+                format!("The {} of {}", prefix, place),
+            ];
+            if prefix == "Bishop" {
+                variants.push(format!("The Lord Bishop of {}", place));
+            }
+            return variants;
+        }
+        vec![self.nice_name()]
+    }
+}
+
 impl NiceName for LordName {
     fn nice_name(&self) -> String {
-        let name = self.lordname.clone().unwrap_or_else(|| {
-            self.surname
-                .clone()
-                .unwrap_or_else(|| self.lordofname.clone().unwrap_or("Unknown".to_string()))
-        });
-        let mut full_name = name.clone();
-        if let Some(honorific_prefix) = &self.honorific_prefix {
-            full_name = format!("{} {}", honorific_prefix, full_name);
-        }
+        let name = if let Some(lordname) = &self.lordname {
+            if let Some(lordofname) = &self.lordofname {
+                format!("{} of {}", lordname, lordofname)
+            } else {
+                lordname.clone()
+            }
+        } else if let Some(lordofname) = &self.lordofname {
+            if self.honorific_prefix.is_some() {
+                format!("of {}", lordofname)
+            } else if let Some(surname) = &self.surname {
+                surname.clone()
+            } else {
+                return "Unknown".to_string();
+            }
+        } else if let Some(surname) = &self.surname {
+            surname.clone()
+        } else {
+            return "Unknown".to_string();
+        };
+
+        let mut full_name = if let Some(honorific_prefix) = &self.honorific_prefix {
+            format!("{} {}", honorific_prefix, name)
+        } else {
+            name
+        };
         if let Some(honorific_suffix) = &self.honorific_suffix {
             full_name = format!("{} {}", full_name, honorific_suffix);
         }
@@ -756,42 +824,39 @@ impl NiceName for LordName {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass]
 pub struct AltName {
     #[serde(
         default = "default_end_date",
         skip_serializing_if = "is_default_end_date"
     )]
-    end_date: FuzzyDate,
-    name: String,
-    note: NameType,
+    pub end_date: FuzzyDate,
+    pub name: String,
+    pub note: NameType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    organization_id: Option<String>,
+    pub organization_id: Option<String>,
     #[serde(
         default = "default_start_date",
         skip_serializing_if = "is_default_start_date"
     )]
-    start_date: FuzzyDate,
+    pub start_date: FuzzyDate,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct Organization {
     #[serde(skip_serializing_if = "Option::is_none")]
-    classification: Option<OrgType>,
-    id: String,
+    pub classification: Option<OrgType>,
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    identifiers: Option<Vec<SimpleIdentifer>>,
-    name: String,
+    pub identifiers: Option<Vec<SimpleIdentifer>>,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct MembershipRedirect {
-    id: String,
-    redirect: String,
+    pub id: String,
+    pub redirect: String,
 }
 
 impl NiceName for AltName {
@@ -800,12 +865,53 @@ impl NiceName for AltName {
     }
 }
 
+impl NameOptions {
+    pub fn name_variants(&self) -> Vec<String> {
+        match self {
+            NameOptions::LordName(n) => n.name_variants(),
+            _ => vec![self.nice_name()],
+        }
+    }
+
+    pub fn date_range(&self) -> (&FuzzyDate, &FuzzyDate) {
+        match self {
+            NameOptions::BasicPersonName(n) => (&n.start_date, &n.end_date),
+            NameOptions::LordName(n) => (&n.start_date, &n.end_date),
+            NameOptions::AltName(n) => (&n.start_date, &n.end_date),
+        }
+    }
+
+    pub fn note_str(&self) -> &str {
+        match self {
+            NameOptions::BasicPersonName(n) => match n.note {
+                NameType::Main => "Main",
+                NameType::Alternate => "Alternate",
+            },
+            NameOptions::LordName(n) => match n.note {
+                NameType::Main => "Main",
+                NameType::Alternate => "Alternate",
+            },
+            NameOptions::AltName(_) => "Alternate",
+        }
+    }
+}
+
+impl NiceName for NameOptions {
+    fn nice_name(&self) -> String {
+        match self {
+            NameOptions::BasicPersonName(n) => n.nice_name(),
+            NameOptions::LordName(n) => n.nice_name(),
+            NameOptions::AltName(n) => n.nice_name(),
+        }
+    }
+}
+
 impl ValidDateRange for NameOptions {
     fn is_valid_date_range(&self) -> ValidatorErrorCollection {
         match self {
-            NameOptions::BasicPersonName(name) => name.is_valid_date_range(),
-            NameOptions::LordName(name) => name.is_valid_date_range(),
-            NameOptions::AltName(name) => name.is_valid_date_range(),
+            NameOptions::BasicPersonName(n) => n.is_valid_date_range(),
+            NameOptions::LordName(n) => n.is_valid_date_range(),
+            NameOptions::AltName(n) => n.is_valid_date_range(),
         }
     }
 }
@@ -815,9 +921,6 @@ impl<'de> Deserialize<'de> for NameOptions {
     where
         D: serde::Deserializer<'de>,
     {
-        // if there's a name key, it's an alt name
-        // if there's a family_name key, it's a person name
-        // otherwise it's a lord name
         let value: serde_json::Value = serde::Deserialize::deserialize(deserializer)?;
         if value.get("name").is_some() {
             Ok(NameOptions::AltName(
@@ -835,18 +938,7 @@ impl<'de> Deserialize<'de> for NameOptions {
     }
 }
 
-impl NiceName for NameOptions {
-    fn nice_name(&self) -> String {
-        match self {
-            NameOptions::BasicPersonName(name) => name.nice_name(),
-            NameOptions::LordName(name) => name.nice_name(),
-            NameOptions::AltName(name) => name.nice_name(),
-        }
-    }
-}
-
 impl ValidDateRange for Person {
-    // if there are other_names, check if they have valid date ranges
     fn is_valid_date_range(&self) -> ValidatorErrorCollection {
         if let Some(other_names) = &self.other_names {
             other_names
@@ -877,7 +969,6 @@ impl<'de> Deserialize<'de> for Identifier {
         D: serde::Deserializer<'de>,
     {
         let value: serde_json::Value = serde::Deserialize::deserialize(deserializer)?;
-
         if value.is_i64() {
             Ok(Identifier::Int(value.as_i64().unwrap()))
         } else if value.is_string() {
@@ -938,6 +1029,7 @@ impl ValidDateRange for MembershipType {
         }
     }
 }
+
 impl<'de> Deserialize<'de> for MembershipType {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -967,107 +1059,69 @@ impl HasId for MembershipType {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct Area {
-    name: String,
+    pub name: String,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
-    other_names: Vec<String>,
+    pub other_names: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(get_all)]
 pub struct Post {
     #[serde(skip_serializing_if = "Option::is_none")]
-    area: Option<Area>,
+    pub area: Option<Area>,
     #[serde(
         default = "default_end_date",
         skip_serializing_if = "is_default_end_date"
     )]
-    end_date: FuzzyDate,
-    id: String,
-
+    pub end_date: FuzzyDate,
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    identifiers: Option<Vec<SimpleIdentifer>>,
-    label: String,
-    organization_id: String,
-    role: String,
+    pub identifiers: Option<Vec<SimpleIdentifer>>,
+    pub label: String,
+    pub organization_id: String,
+    pub role: String,
     #[serde(
         default = "default_start_date",
         skip_serializing_if = "is_default_start_date"
     )]
-    start_date: FuzzyDate,
+    pub start_date: FuzzyDate,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-#[pyclass(subclass)]
 pub struct Popolo {
     #[serde(default = "MembershipCollection::new")]
-    #[pyo3(get)]
     pub memberships: MembershipCollection,
     #[serde(default = "OrganizationCollection::new")]
-    #[pyo3(get)]
     pub organizations: OrganizationCollection,
     #[serde(default = "PersonCollection::new")]
-    #[pyo3(get)]
     pub persons: PersonCollection,
     #[serde(default = "PostCollection::new")]
-    #[pyo3(get)]
     pub posts: PostCollection,
 }
 
 impl ValidDateRange for Popolo {
     fn is_valid_date_range(&self) -> ValidatorErrorCollection {
         let mut errors: ValidatorErrorCollection = Vec::new();
-
         for person in &self.persons {
             errors.extend(person.is_valid_date_range());
         }
-
         for membership in &self.memberships {
             errors.extend(membership.is_valid_date_range());
         }
-
         for post in &self.posts {
             errors.extend(post.is_valid_date_range());
         }
-
         errors
     }
 }
 
-#[pymethods]
-impl Popolo {
-    #[getter]
-    fn persons_direct<'py>(&self, py: Python<'py>) -> Vec<Py<PyAny>> {
-        let py_people: Vec<PyObject> = self
-            .persons
-            .iter()
-            .map(|person_type| match person_type {
-                PersonType::Person(person) => person.clone().into_py(py),
-                PersonType::PersonRedirect(redirect) => redirect.clone().into_py(py),
-            })
-            .collect();
-
-        py_people
-    }
-
-    #[pyo3(name = "model_validate_json", signature = (json_str, validate=true))]
-    #[classmethod]
-    fn py_fromjsonstr(_cls: &Bound<'_, PyType>, json_str: &str, validate: bool) -> PyResult<Self> {
-        match Popolo::model_validate_json(json_str, &validate) {
-            Ok(popolo) => Ok(popolo),
-            Err(e) => {
-                for error in &e {
-                    println!("Validation error: {}", error.error);
-                }
-                Err(pyo3::exceptions::PyValueError::new_err(
-                    "Validation errors help",
-                ))
-            }
-        }
-    }
+pub fn reduce_to_slug(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphabetic())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
 }
 
 impl Popolo {
@@ -1077,16 +1131,6 @@ impl Popolo {
             .filter_map(|p| match p {
                 PersonType::Person(p) => Some(p),
                 PersonType::PersonRedirect(_) => None,
-            })
-            .collect()
-    }
-
-    fn just_person_redirects(&self) -> Vec<&PersonRedirect> {
-        self.persons
-            .iter()
-            .filter_map(|p| match p {
-                PersonType::Person(_p) => None,
-                PersonType::PersonRedirect(p) => Some(p),
             })
             .collect()
     }
@@ -1101,22 +1145,10 @@ impl Popolo {
             .collect()
     }
 
-    fn just_membership_redirects(&self) -> Vec<&MembershipRedirect> {
-        self.memberships
-            .iter()
-            .filter_map(|m| match m {
-                MembershipType::Membership(_m) => None,
-                MembershipType::MembershipRedirect(m) => Some(m),
-            })
-            .collect()
-    }
-
     pub fn check_valid_date_ranges(&self) -> Result<(), ValidatorErrorCollection> {
         let mut errors: ValidatorErrorCollection = Vec::new();
 
         let no_org_str = "no_org".to_string();
-        // sort the memberships by post_id, person_id, and start_date
-
         let just_memberships: Vec<&Membership> = self
             .just_memberships()
             .into_iter()
@@ -1142,28 +1174,24 @@ impl Popolo {
         }) {
             let group: Vec<&Membership> = chunk.collect();
             for i in 1..group.len() {
-                let prev_date = &group[i - 1].end_date;
-                let this_date = &group[i].start_date;
-
-                if prev_date.is_approximate() || this_date.is_approximate() {
+                let prev = group[i - 1];
+                let curr = group[i];
+                if prev.start_date.is_approximate() || curr.start_date.is_approximate() {
                     continue;
                 }
-
-                if prev_date > this_date {
+                if prev.end_date.is_approximate() || curr.end_date.is_approximate() {
+                    continue;
+                }
+                if prev.end_date > curr.start_date {
                     errors.push(ValidatorError {
-                        error: format!(
-                            "Membership {} overlaps with {}",
-                            group[i - 1].id,
-                            group[i].id
-                        ),
+                        error: format!("Membership {} overlaps with {}", prev.id, curr.id),
                         validator_type: ValidatorType::DateRangeOverlap,
                     });
-                } else if prev_date == this_date {
+                } else if prev.end_date == curr.start_date {
                     errors.push(ValidatorError {
                         error: format!(
-                            "Membership {} same date with {}",
-                            group[i - 1].id,
-                            group[i].id
+                            "Membership {} ends on same date as {} starts",
+                            prev.id, curr.id
                         ),
                         validator_type: ValidatorType::DateRangeOverlapSameDate,
                     });
@@ -1179,78 +1207,84 @@ impl Popolo {
     }
 
     pub fn check_unique_ids(&self) -> Result<(), ValidatorErrorCollection> {
-        // first we're checking if have any duplicates in the ids
         let mut errors: ValidatorErrorCollection = Vec::new();
-        let person_ids = check_unique(&self.persons.root, |person| &person.get_id(), "Person")?;
-        let organization_ids = check_unique(
-            &self.organizations.root,
-            |organization| &organization.id,
-            "Organization",
-        )?;
-        let membership_ids = check_unique(
-            &self.memberships.root,
-            |membership| &membership.get_id(),
-            "Membership",
-        )?;
-        let post_ids = check_unique(&self.posts.root, |post| &post.id, "Post")?;
 
-        // we want to check if the person_id, post_id, organization_id, and on_behalf_of_id in the memberships are valid
+        let person_ids = match check_unique(&self.persons.root, |p| p.get_id(), "Person") {
+            Ok(ids) => ids,
+            Err(e) => {
+                errors.extend(e);
+                HashSet::new()
+            }
+        };
 
-        let just_memberships: Vec<&Membership> = self.just_memberships();
+        let org_ids = match check_unique(&self.organizations.root, |o| o.get_id(), "Organization") {
+            Ok(ids) => ids,
+            Err(e) => {
+                errors.extend(e);
+                HashSet::new()
+            }
+        };
 
-        for membership in just_memberships {
-            if let Some(error) = check_valid_foreign_key(
-                &membership.person_id,
-                &person_ids,
-                "person_id",
-                &membership.id,
-            ) {
-                errors.push(error);
+        let post_ids = match check_unique(&self.posts.root, |p| p.get_id(), "Post") {
+            Ok(ids) => ids,
+            Err(e) => {
+                errors.extend(e);
+                HashSet::new()
+            }
+        };
+
+        match check_unique(&self.memberships.root, |m| m.get_id(), "Membership") {
+            Ok(_) => {}
+            Err(e) => errors.extend(e),
+        };
+
+        for membership in self.just_memberships() {
+            let person_id = &membership.person_id;
+            if let Some(e) =
+                check_valid_foreign_key(person_id, &person_ids, "person_id", &membership.id)
+            {
+                errors.push(e);
             }
             if let Some(post_id) = &membership.post_id {
-                if let Some(error) =
+                if let Some(e) =
                     check_valid_foreign_key(post_id, &post_ids, "post_id", &membership.id)
                 {
-                    errors.push(error);
+                    errors.push(e);
                 }
             }
-            if let Some(org_id) = &membership.organization_id {
-                if let Some(error) = check_valid_foreign_key(
-                    org_id,
-                    &organization_ids,
+            if let Some(organization_id) = &membership.organization_id {
+                if let Some(e) = check_valid_foreign_key(
+                    organization_id,
+                    &org_ids,
                     "organization_id",
                     &membership.id,
                 ) {
-                    errors.push(error);
+                    errors.push(e);
                 }
             }
             if let Some(on_behalf_of_id) = &membership.on_behalf_of_id {
-                if let Some(error) = check_valid_foreign_key(
+                if let Some(e) = check_valid_foreign_key(
                     on_behalf_of_id,
-                    &organization_ids,
+                    &org_ids,
                     "on_behalf_of_id",
                     &membership.id,
                 ) {
-                    errors.push(error);
+                    errors.push(e);
                 }
             }
         }
-        for membership in self.just_membership_redirects() {
-            if let Some(error) = check_valid_foreign_key(
-                &membership.redirect,
-                &membership_ids,
-                "redirect",
-                &membership.id,
-            ) {
-                errors.push(error);
-            }
-        }
 
-        for person in &self.just_person_redirects() {
-            if let Some(error) =
-                check_valid_foreign_key(&person.redirect, &person_ids, "redirect", &person.id)
-            {
-                errors.push(error);
+        for person_redirect in self.persons.iter().filter_map(|p| match p {
+            PersonType::PersonRedirect(r) => Some(r),
+            _ => None,
+        }) {
+            if let Some(e) = check_valid_foreign_key(
+                &person_redirect.redirect,
+                &person_ids,
+                "redirect",
+                &person_redirect.id,
+            ) {
+                errors.push(e);
             }
         }
 
@@ -1298,6 +1332,88 @@ impl Popolo {
             }
         }
         Ok(popolo)
+    }
+
+    /// Find the person_id for a person with a matching name active in the given chamber on the given date.
+    pub fn find_person_id_by_name(
+        &self,
+        name: &str,
+        chamber_id: &str,
+        date: NaiveDate,
+    ) -> Option<String> {
+        let slug = reduce_to_slug(name);
+
+        let post_ids: HashSet<&str> = self
+            .posts
+            .iter()
+            .filter(|p| p.organization_id == chamber_id)
+            .map(|p| p.id.as_str())
+            .collect();
+
+        let active_person_ids: HashSet<&str> = self
+            .just_memberships()
+            .iter()
+            .filter(|m| {
+                let via_post = m
+                    .post_id
+                    .as_deref()
+                    .map(|pid| post_ids.contains(pid))
+                    .unwrap_or(false);
+                // Lords memberships link directly to the org with no post_id
+                let via_org_direct =
+                    m.post_id.is_none() && m.organization_id.as_deref() == Some(chamber_id);
+                (via_post || via_org_direct)
+                    && m.start_date.earliest_date <= date
+                    && date <= m.end_date.latest_date
+            })
+            .map(|m| m.person_id.as_str())
+            .collect();
+
+        for pt in self.persons.iter() {
+            if let PersonType::Person(person) = pt {
+                if !active_person_ids.contains(person.id.as_str()) {
+                    continue;
+                }
+                if let Some(names) = &person.other_names {
+                    for n in names {
+                        let (start, end) = n.date_range();
+                        if start.earliest_date <= date && date <= end.latest_date {
+                            for variant in n.name_variants() {
+                                if reduce_to_slug(&variant) == slug {
+                                    return Some(person.id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Find the person_id for a person with a matching identifier in the given scheme.
+    pub fn find_person_id_by_identifier(&self, identifier: &str, scheme: &str) -> Option<String> {
+        for pt in self.persons.iter() {
+            if let PersonType::Person(person) = pt {
+                if let Some(ids) = &person.identifiers {
+                    for id in ids {
+                        if id.scheme == scheme && id.identifier.as_str() == identifier {
+                            return Some(person.id.clone());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Return IDs of all non-redirect memberships for a given person_id.
+    pub fn person_membership_ids(&self, person_id: &str) -> Vec<String> {
+        self.just_memberships()
+            .iter()
+            .filter(|m| m.person_id == person_id)
+            .map(|m| m.id.clone())
+            .collect()
     }
 }
 
