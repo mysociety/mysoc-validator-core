@@ -1,0 +1,22 @@
+[package]
+name = "mysoc_validator_fast"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_mysoc_validator_fast"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "stub_gen"
+path = "src/bin/stub_gen.rs"
+
+[dependencies]
+popolo_validator = { path = "../popolo_validator" }
+fuzzy_date = { path = "../fuzzy_date", features = ["python"] }
+pyo3 = { version = "0.22.2", features = ["abi3-py39", "multiple-pymethods"] }
+pyo3-stub-gen = "0.6"
+paste = "1"
+serde_json = "1.0.118"
+chrono = "0.4.38"
+regex = "1.11.0"
