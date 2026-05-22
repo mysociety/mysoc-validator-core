@@ -1,14 +1,19 @@
 use chrono::{Datelike, Duration, NaiveDate};
-use pyo3::exceptions::PyTypeError;
-use pyo3::prelude::*;
-use pyo3::types::{PyString, PyType};
 use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq)]
+#[cfg(feature = "python")]
+use pyo3::exceptions::PyTypeError;
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use pyo3::types::{PyString, PyType};
+#[cfg(feature = "python")]
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum DateCompleteness {
     YearOnly,
     YearAndMonth,
@@ -17,7 +22,6 @@ pub enum DateCompleteness {
     NotADate,
 }
 
-/// Check if the date is just start and end of year
 fn is_partial_just_year(earliest_date: &NaiveDate, latest_date: &NaiveDate) -> bool {
     if earliest_date.year() == latest_date.year() {
         return earliest_date.month() == 1
@@ -28,76 +32,63 @@ fn is_partial_just_year(earliest_date: &NaiveDate, latest_date: &NaiveDate) -> b
     false
 }
 
-/// Check if the date is just start and end of month
 fn is_partial_just_year_and_month(earliest_date: &NaiveDate, latest_date: &NaiveDate) -> bool {
     if earliest_date.month() == latest_date.month() && earliest_date.year() == latest_date.year() {
-        let latest_in_month = last_day_in_month(&earliest_date);
+        let latest_in_month = last_day_in_month(earliest_date);
         return earliest_date.day() == 1 && latest_date.day() == latest_in_month.day();
     }
     false
 }
 
-/// Get the completeness of a date range
 fn get_paired_completeness(earliest_date: &NaiveDate, latest_date: &NaiveDate) -> DateCompleteness {
     if earliest_date == latest_date {
-        return DateCompleteness::FullDate;
-    } else if is_partial_just_year_and_month(&earliest_date, &latest_date) {
-        return DateCompleteness::YearAndMonth;
-    } else if is_partial_just_year(&earliest_date, &latest_date) {
-        return DateCompleteness::YearOnly;
+        DateCompleteness::FullDate
+    } else if is_partial_just_year_and_month(earliest_date, latest_date) {
+        DateCompleteness::YearAndMonth
+    } else if is_partial_just_year(earliest_date, latest_date) {
+        DateCompleteness::YearOnly
+    } else {
+        DateCompleteness::FullDateRange
     }
-    DateCompleteness::FullDateRange
 }
 
-/// given a start date, return the last day of the month
 fn last_day_in_month(start_date: &NaiveDate) -> NaiveDate {
-    let latest = if start_date.month() == 12 {
+    if start_date.month() == 12 {
         NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap()
     } else {
         NaiveDate::from_ymd_opt(start_date.year(), start_date.month() + 1, 1).unwrap()
             - Duration::days(1)
-    };
-    latest
+    }
 }
 
-/// given a start date, return the last day of the year
 fn last_day_in_year(start_date: &NaiveDate) -> NaiveDate {
     NaiveDate::from_ymd_opt(start_date.year(), 12, 31).unwrap()
 }
 
-// Try and parse an incomplete date string
 fn parse_single_date(date: &str) -> Result<NaiveDate, String> {
-    // Check is just numbers and -
-    if !date.chars().all(|c| c.is_digit(10) || c == '-') {
+    if !date.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return Err(format!("Invalid date format: {}", date));
     }
-
     match date.len() {
         4 => {
-            // Parse the year-only format: YYYY
             let year = i32::from_str(date).map_err(|_| format!("Invalid year format: {}", date))?;
             NaiveDate::from_ymd_opt(year, 1, 1)
                 .ok_or_else(|| format!("Failed to create date from year: {}", date))
         }
         7 => {
-            // Parse the year-month format: YYYY-MM
             let (year, month) = date.split_at(4);
-            let year = i32::from_str(year).map_err(|_| format!("Invalid year format: {}", year))?;
-            let month = u32::from_str(&month[1..])
-                .map_err(|_| format!("Invalid month format: {}", month))?;
+            let year = i32::from_str(year).map_err(|_| format!("Invalid year: {}", year))?;
+            let month =
+                u32::from_str(&month[1..]).map_err(|_| format!("Invalid month: {}", month))?;
             NaiveDate::from_ymd_opt(year, month, 1)
                 .ok_or_else(|| format!("Failed to create date from year-month: {}", date))
         }
-        10 => {
-            // Parse the full date format: YYYY-MM-DD
-            NaiveDate::parse_from_str(date, "%Y-%m-%d")
-                .map_err(|_| format!("Invalid full date format: {}", date))
-        }
+        10 => NaiveDate::parse_from_str(date, "%Y-%m-%d")
+            .map_err(|_| format!("Invalid full date format: {}", date)),
         _ => Err(format!("Invalid date length: {}", date)),
     }
 }
 
-// Determine the completeness of a date based on length alone
 fn determine_completeness(date: &str) -> DateCompleteness {
     match date.len() {
         4 => DateCompleteness::YearOnly,
@@ -106,15 +97,24 @@ fn determine_completeness(date: &str) -> DateCompleteness {
         _ => DateCompleteness::NotADate,
     }
 }
-#[pyclass(subclass, module = "fuzzy_date")]
+
+// ---------------------------------------------------------------------------
+// FuzzyDate struct
+// ---------------------------------------------------------------------------
+
+#[cfg_attr(feature = "python", gen_stub_pyclass)]
+#[cfg_attr(feature = "python", pyclass(subclass, module = "fuzzy_date"))]
 #[derive(Debug, Clone)]
 pub struct FuzzyDate {
-    #[pyo3(get)]
-    earliest_date: NaiveDate,
-    #[pyo3(get)]
-    latest_date: NaiveDate,
+    pub earliest_date: NaiveDate,
+    pub latest_date: NaiveDate,
     completeness: DateCompleteness,
 }
+
+// ---------------------------------------------------------------------------
+// Serialisation (always compiled)
+// ---------------------------------------------------------------------------
+
 impl Serialize for FuzzyDate {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -134,15 +134,27 @@ impl<'de> Deserialize<'de> for FuzzyDate {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Python methods (compiled only with the "python" feature)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "python")]
+#[gen_stub_pymethods]
 #[pymethods]
 impl FuzzyDate {
     #[new]
     fn new_py(earliest_date: NaiveDate, latest_date: NaiveDate) -> Self {
-        Self {
-            earliest_date: earliest_date,
-            latest_date: latest_date,
-            completeness: get_paired_completeness(&earliest_date, &latest_date),
-        }
+        Self::new(earliest_date, latest_date)
+    }
+
+    #[getter]
+    fn earliest_date(&self) -> NaiveDate {
+        self.earliest_date
+    }
+
+    #[getter]
+    fn latest_date(&self) -> NaiveDate {
+        self.latest_date
     }
 
     #[setter]
@@ -203,13 +215,44 @@ impl FuzzyDate {
         }
     }
 
+    fn __le__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        if let Ok(other_date) = other.extract::<NaiveDate>() {
+            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Greater))
+        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
+            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Greater))
+        } else {
+            Err(PyTypeError::new_err(
+                "Comparison not supported between these types",
+            ))
+        }
+    }
+
+    fn __ge__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        if let Ok(other_date) = other.extract::<NaiveDate>() {
+            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Less))
+        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
+            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Less))
+        } else {
+            Err(PyTypeError::new_err(
+                "Comparison not supported between these types",
+            ))
+        }
+    }
+
+    fn __add__(&self, py: Python, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+        let days: i64 = other.getattr("days")?.extract()?;
+        let result = self.earliest_date + chrono::Duration::days(days);
+        let date_cls = py.import_bound("datetime")?.getattr("date")?;
+        date_cls
+            .call1((result.year(), result.month(), result.day()))
+            .map(|d| d.into_py(py))
+    }
+
     #[pyo3(name = "fromisoformat")]
     #[classmethod]
     fn py_fromisoformat(_cls: &Bound<'_, PyType>, iso8601_date_string: &str) -> PyResult<Self> {
-        match FuzzyDate::fromisoformat(iso8601_date_string) {
-            Ok(date) => Ok(date),
-            Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
-        }
+        FuzzyDate::fromisoformat(iso8601_date_string)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 
     #[pyo3(name = "isoformat")]
@@ -231,11 +274,15 @@ impl FuzzyDate {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Pure-Rust impl (always compiled)
+// ---------------------------------------------------------------------------
+
 impl FuzzyDate {
     pub fn new(earliest_date: NaiveDate, latest_date: NaiveDate) -> Self {
         Self {
-            earliest_date: earliest_date,
-            latest_date: latest_date,
+            earliest_date,
+            latest_date,
             completeness: get_paired_completeness(&earliest_date, &latest_date),
         }
     }
@@ -264,69 +311,48 @@ impl FuzzyDate {
             ),
             DateCompleteness::FullDate => self.earliest_date.to_string(),
             DateCompleteness::FullDateRange => {
-                format!(
-                    "{}/{}",
-                    self.earliest_date.to_string(),
-                    self.latest_date.to_string()
-                )
+                format!("{}/{}", self.earliest_date, self.latest_date)
             }
-            _ => "Invalid date".to_string(),
+            DateCompleteness::NotADate => "Invalid date".to_string(),
         }
     }
 
     pub fn fromisoformat(iso8601_date_string: &str) -> Result<Self, String> {
         let parts: Vec<&str> = iso8601_date_string.split('/').collect();
 
-        // Determine the completeness
         let completeness = match parts.len() {
             1 => determine_completeness(parts[0]),
             2 => DateCompleteness::FullDateRange,
             _ => DateCompleteness::NotADate,
         };
 
-        // Parse the start date
-        let start_date_result = match completeness {
+        let start_date = match completeness {
             DateCompleteness::NotADate => {
-                Err(format!("Invalid date format: {}", iso8601_date_string))
+                return Err(format!("Invalid date format: {}", iso8601_date_string))
             }
-            DateCompleteness::FullDateRange => parse_single_date(parts[0]),
-            _ => parse_single_date(iso8601_date_string),
+            DateCompleteness::FullDateRange => parse_single_date(parts[0])?,
+            _ => parse_single_date(iso8601_date_string)?,
         };
 
-        let start_date = match start_date_result {
-            Ok(date) => date,
-            Err(e) => return Err(e),
-        };
-
-        let end_date_result = match completeness {
+        let end_date = match completeness {
             DateCompleteness::NotADate => {
-                Err(format!("Invalid date format: {}", iso8601_date_string))
+                return Err(format!("Invalid date format: {}", iso8601_date_string))
             }
-            DateCompleteness::YearOnly => Ok(last_day_in_year(&start_date)),
-            DateCompleteness::YearAndMonth => Ok(last_day_in_month(&start_date)),
-            DateCompleteness::FullDateRange => parse_single_date(parts[1]),
-            DateCompleteness::FullDate => Ok(start_date),
-        };
-
-        let end_date = match end_date_result {
-            Ok(date) => date,
-            Err(e) => return Err(e),
+            DateCompleteness::YearOnly => last_day_in_year(&start_date),
+            DateCompleteness::YearAndMonth => last_day_in_month(&start_date),
+            DateCompleteness::FullDateRange => parse_single_date(parts[1])?,
+            DateCompleteness::FullDate => start_date,
         };
 
         Ok(Self {
             earliest_date: start_date,
             latest_date: end_date,
-            completeness: completeness,
+            completeness,
         })
     }
 
     pub fn approx_equal(&self, date: &NaiveDate) -> bool {
-        // if date is between earliest and latest
-        if date >= &self.earliest_date && date <= &self.latest_date {
-            return true;
-        } else {
-            return false;
-        }
+        date >= &self.earliest_date && date <= &self.latest_date
     }
 }
 
@@ -350,7 +376,6 @@ impl fmt::Display for FuzzyDate {
 
 impl std::ops::Add<Duration> for FuzzyDate {
     type Output = Self;
-
     fn add(self, other: Duration) -> Self::Output {
         Self::new(self.earliest_date + other, self.latest_date + other)
     }
@@ -358,8 +383,6 @@ impl std::ops::Add<Duration> for FuzzyDate {
 
 impl PartialEq<FuzzyDate> for FuzzyDate {
     fn eq(&self, other: &FuzzyDate) -> bool {
-        // Either the earlest date and latest date are an exact match
-        // or one of the dates is within the range of the other
         (self.earliest_date == other.earliest_date && self.latest_date == other.latest_date)
             || self.approx_equal(&other.earliest_date)
             || self.approx_equal(&other.latest_date)
@@ -382,10 +405,9 @@ impl PartialEq<NaiveDate> for FuzzyDate {
         self.approx_equal(other)
     }
 }
+
 impl PartialOrd for FuzzyDate {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // if latest date is before the earliest date of the other - that's less
-        // if earliest date is after the latest date of the other - that's greater
         if self.latest_date < other.earliest_date {
             Some(std::cmp::Ordering::Less)
         } else if self.earliest_date > other.latest_date {
@@ -404,8 +426,6 @@ impl Ord for FuzzyDate {
 
 impl PartialOrd<NaiveDate> for FuzzyDate {
     fn partial_cmp(&self, other: &NaiveDate) -> Option<std::cmp::Ordering> {
-        // if the date is after the latest date - that's greater
-        // if the date is before the earliest date - that's less
         if other > &self.latest_date {
             Some(std::cmp::Ordering::Less)
         } else if other < &self.earliest_date {

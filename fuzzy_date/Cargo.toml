@@ -3,17 +3,18 @@ name = "fuzzy_date"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+python = ["dep:pyo3", "dep:pyo3-stub-gen"]
+
 [dependencies]
 chrono = "0.4.38"
 serde = "1.0.203"
 serde_derive = "1.0.203"
+pyo3 = { version = "0.22.2", features = ["chrono"], optional = true }
+pyo3-stub-gen = { version = "0.6", optional = true }
 
 [lib]
 crate-type = ["rlib"]
-
-[dependencies.pyo3]
-version = "0.22.2"
-features = ["chrono"]
 
 [profile.release]
 lto = true
