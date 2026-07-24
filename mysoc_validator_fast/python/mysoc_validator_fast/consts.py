@@ -15,6 +15,13 @@ class Chamber(StrEnum):
     NORTHERN_IRELAND = "northern-ireland-assembly"
 
 
+class CommonKey(StrEnum):
+    COMPANIES_HOUSE = "companies_house"
+    URL = "url"
+    STANDARDISED_NAME = "standardised_name"
+    SIC_CODE = "sic_code"
+
+
 class IdentifierScheme(StrEnum):
     DATADOTPARL = "datadotparl_id"
     MNIS = "datadotparl_id"

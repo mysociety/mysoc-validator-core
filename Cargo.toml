@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "fuzzy_date", "popolo_validator", "mysoc_validator_fast",
+    "fuzzy_date", "popolo_validator", "regmem_validator", "mysoc_validator_fast",
 ]
 
 

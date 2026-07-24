@@ -8,13 +8,15 @@ use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use std::sync::{Arc, RwLock};
 
+mod interests;
+
 // ---------------------------------------------------------------------------
 // Shared state
 // ---------------------------------------------------------------------------
 
 type SharedPopolo = Arc<RwLock<Popolo>>;
 
-fn escape_non_ascii(s: String) -> String {
+pub(crate) fn escape_non_ascii(s: String) -> String {
     let mut result = String::with_capacity(s.len() + 64);
     for c in s.chars() {
         if (c as u32) > 127 {
@@ -1493,6 +1495,14 @@ fn _mysoc_validator_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPersonCollection>()?;
     m.add_class::<PyOrganizationCollection>()?;
     m.add_class::<PyPostCollection>()?;
+    m.add_class::<interests::PyRegmemRegister>()?;
+    m.add_class::<interests::PyRegmemPerson>()?;
+    m.add_class::<interests::PyRegmemCategory>()?;
+    m.add_class::<interests::PyRegmemEntry>()?;
+    m.add_class::<interests::PyRegmemSummary>()?;
+    m.add_class::<interests::PyRegmemDetailGroup>()?;
+    m.add_class::<interests::PyRegmemDetail>()?;
+    m.add_class::<interests::PyRegmemAnnotation>()?;
     Ok(())
 }
 

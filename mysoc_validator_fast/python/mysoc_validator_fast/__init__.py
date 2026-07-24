@@ -14,8 +14,18 @@ Typical usage::
     print(person.names_on_date(date.today()))
 """
 
-from .consts import Chamber, IdentifierScheme, MembershipReason
+from .consts import Chamber, CommonKey, IdentifierScheme, MembershipReason
 from .dates import ApproxDate, FixedDate
+from .interests import (
+    RegmemAnnotation,
+    RegmemCategory,
+    RegmemDetail,
+    RegmemDetailGroup,
+    RegmemEntry,
+    RegmemPerson,
+    RegmemRegister,
+    RegmemSummary,
+)
 from .popolo import (
     Membership,
     MembershipRedirect,
@@ -29,6 +39,7 @@ from .popolo import (
 __all__ = [
     "ApproxDate",
     "Chamber",
+    "CommonKey",
     "FixedDate",
     "IdentifierScheme",
     "Membership",
@@ -39,4 +50,12 @@ __all__ = [
     "PersonRedirect",
     "Popolo",
     "Post",
+    "RegmemAnnotation",
+    "RegmemCategory",
+    "RegmemDetail",
+    "RegmemDetailGroup",
+    "RegmemEntry",
+    "RegmemPerson",
+    "RegmemRegister",
+    "RegmemSummary",
 ]
