@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "mysoc-validator-fast"
 version = "0.1.0"
 description = "Fast, Rust-backed Popolo data for Python — drop-in replacement for mysoc_validator"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = ["pydantic>=2", "requests", "rich>=10,<14", "typer>=0.12"]
 
 [project.scripts]
