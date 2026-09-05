@@ -14,6 +14,7 @@ path = "src/bin/stub_gen.rs"
 [dependencies]
 popolo_validator = { path = "../popolo_validator" }
 regmem_validator = { path = "../regmem_validator" }
+transcript_validator = { path = "../transcript_validator" }
 rust_decimal = "1"
 fuzzy_date = { path = "../fuzzy_date", features = ["python"] }
 pyo3 = { version = "0.22.2", features = ["abi3-py39", "multiple-pymethods"] }
