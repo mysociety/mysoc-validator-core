@@ -13,7 +13,7 @@ lazy_static! {
     static ref DEFAULT_START_DATE: FuzzyDate = FuzzyDate::fromisoformat("0001-01-01").unwrap();
     static ref DEFAULT_END_DATE: FuzzyDate = FuzzyDate::fromisoformat("9999-12-31").unwrap();
     static ref PERSON_ID_REGEX: Regex = Regex::new(r"uk\.org\.publicwhip/person/\d+$").unwrap();
-    static ref POST_ID_REGEX: Regex = Regex::new(r"uk\.org\.publicwhip/cons/\d+(-NI)?$").unwrap();
+    static ref POST_ID_REGEX: Regex = Regex::new(r"^.+$").unwrap();
     static ref MEMBER_ID_REGEX: Regex = Regex::new(r".*/-?\d+$").unwrap();
     static ref ORG_ID: Regex = Regex::new(r"^[a-z0-9-]+$").unwrap();
 }
@@ -44,7 +44,7 @@ pub enum NameOptions {
     AltName(AltName),
 }
 
-#[derive(Hash, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Copy, Clone)]
 pub enum ValidatorType {
     InvalidJson,
     NonUniqueId,
@@ -61,7 +61,14 @@ pub enum OrgType {
     Party,
     Chamber,
     Metro,
+    Committee,
+    CrossPartyGroup,
+    LocalAuthority,
+    CombinedAuthority,
+    Other,
 }
+
+pub type Extra = serde_json::Map<String, serde_json::Value>;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NameType {
@@ -181,6 +188,7 @@ pub enum PersonType {
 }
 
 #[derive(Serialize, Debug, Clone)]
+#[serde(untagged)]
 pub enum Identifier {
     String(String),
     Int(i64),
@@ -288,6 +296,7 @@ create_interface!(MembershipCollection, MembershipType);
 create_interface!(OrganizationCollection, Organization);
 create_interface!(PostCollection, Post);
 
+#[derive(Debug)]
 pub struct ValidatorError {
     pub error: String,
     pub validator_type: ValidatorType,
@@ -300,7 +309,7 @@ pub struct PersonRedirect {
     pub redirect: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct LordName {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -314,8 +323,7 @@ pub struct LordName {
     pub end_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub given_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub honorific_prefix: Option<String>,
+    pub honorific_prefix: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub honorific_suffix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -334,6 +342,67 @@ pub struct LordName {
     pub start_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub surname: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LordNameData {
+    #[serde(default)]
+    additional_name: Option<String>,
+    #[serde(default)]
+    county: Option<String>,
+    #[serde(default = "default_end_date")]
+    end_date: FuzzyDate,
+    #[serde(default)]
+    given_name: Option<String>,
+    honorific_prefix: String,
+    #[serde(default)]
+    honorific_suffix: Option<String>,
+    #[serde(default)]
+    lordname: Option<String>,
+    #[serde(default)]
+    lordofname: Option<String>,
+    #[serde(default)]
+    lordofname_full: Option<String>,
+    note: NameType,
+    #[serde(
+        default = "default_start_date",
+        deserialize_with = "empty_string_as_default_start_date"
+    )]
+    start_date: FuzzyDate,
+    #[serde(default)]
+    surname: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for LordName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let data = LordNameData::deserialize(deserializer)?;
+        if data.surname.is_some()
+            && data.lordname.is_none()
+            && (data.lordofname.is_none() || data.honorific_prefix.is_empty())
+        {
+            return Err(de::Error::custom(
+                "LordName with surname also needs a lordname, or a lordofname and honorific_prefix",
+            ));
+        }
+        Ok(Self {
+            additional_name: data.additional_name,
+            county: data.county,
+            end_date: data.end_date,
+            given_name: data.given_name,
+            honorific_prefix: data.honorific_prefix,
+            honorific_suffix: data.honorific_suffix,
+            lordname: data.lordname,
+            lordofname: data.lordofname,
+            lordofname_full: data.lordofname_full,
+            note: data.note,
+            start_date: data.start_date,
+            surname: data.surname,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -382,6 +451,8 @@ pub struct Person {
     pub birth_date: Option<FuzzyDate>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub death_date: Option<FuzzyDate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Extra>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gender: Option<String>,
     pub id: String,
@@ -453,6 +524,8 @@ pub struct Membership {
     pub end_date: FuzzyDate,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_reason: Option<MembershipReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Extra>,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identifiers: Option<Vec<SimpleIdentifer>>,
@@ -767,24 +840,34 @@ where
 }
 
 impl LordName {
-    pub fn name_variants(&self) -> Vec<String> {
-        // Peers with a lordname: only the full nice_name (adding the short form
-        // would collide with a different person who holds plain "Lord Smith")
-        if self.lordname.is_some() {
-            return vec![self.nice_name()];
-        }
-        // Bishops, earls-of-a-place, etc.: multiple transcript spellings exist
-        if let (Some(prefix), Some(place)) = (&self.honorific_prefix, &self.lordofname) {
-            let mut variants = vec![
-                format!("{} of {}", prefix, place),
-                format!("The {} of {}", prefix, place),
-            ];
-            if prefix == "Bishop" {
-                variants.push(format!("The Lord Bishop of {}", place));
+    pub fn original_full_name(&self) -> Option<String> {
+        self.surname.as_ref().map(|surname| match &self.given_name {
+            Some(given_name) => format!("{} {}", given_name, surname),
+            None => surname.clone(),
+        })
+    }
+
+    pub fn name_variants(&self, include_original_name: bool) -> Vec<String> {
+        let full = self.nice_name();
+        let mut variants = vec![full.clone()];
+
+        if self.lordname.is_none() && self.lordofname.is_some() {
+            variants.push(format!("The {}", full));
+            if self.honorific_prefix == "Bishop" {
+                variants.push(format!(
+                    "The Lord Bishop of {}",
+                    self.lordofname.as_ref().unwrap()
+                ));
             }
-            return variants;
         }
-        vec![self.nice_name()]
+
+        if include_original_name {
+            if let Some(original_name) = self.original_full_name() {
+                variants.push(original_name);
+            }
+        }
+
+        variants
     }
 }
 
@@ -797,24 +880,12 @@ impl NiceName for LordName {
                 lordname.clone()
             }
         } else if let Some(lordofname) = &self.lordofname {
-            if self.honorific_prefix.is_some() {
-                format!("of {}", lordofname)
-            } else if let Some(surname) = &self.surname {
-                surname.clone()
-            } else {
-                return "Unknown".to_string();
-            }
-        } else if let Some(surname) = &self.surname {
-            surname.clone()
+            format!("of {}", lordofname)
         } else {
             return "Unknown".to_string();
         };
 
-        let mut full_name = if let Some(honorific_prefix) = &self.honorific_prefix {
-            format!("{} {}", honorific_prefix, name)
-        } else {
-            name
-        };
+        let mut full_name = format!("{} {}", self.honorific_prefix, name);
         if let Some(honorific_suffix) = &self.honorific_suffix {
             full_name = format!("{} {}", full_name, honorific_suffix);
         }
@@ -844,12 +915,27 @@ pub struct AltName {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Organization {
+    #[serde(rename = "abstract")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub abstract_: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub classification: Option<OrgType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dissolution_date: Option<FuzzyDate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Extra>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub founding_date: Option<FuzzyDate>,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identifiers: Option<Vec<SimpleIdentifer>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<String>,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -866,9 +952,9 @@ impl NiceName for AltName {
 }
 
 impl NameOptions {
-    pub fn name_variants(&self) -> Vec<String> {
+    pub fn name_variants(&self, include_original_name: bool) -> Vec<String> {
         match self {
-            NameOptions::LordName(n) => n.name_variants(),
+            NameOptions::LordName(n) => n.name_variants(include_original_name),
             _ => vec![self.nice_name()],
         }
     }
@@ -1060,6 +1146,8 @@ impl HasId for MembershipType {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Area {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Extra>,
     pub name: String,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub other_names: Vec<String>,
@@ -1075,6 +1163,8 @@ pub struct Post {
         skip_serializing_if = "is_default_end_date"
     )]
     pub end_date: FuzzyDate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Extra>,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identifiers: Option<Vec<SimpleIdentifer>>,
@@ -1288,6 +1378,32 @@ impl Popolo {
             }
         }
 
+        for organization in self.organizations.iter() {
+            if let Some(parent_id) = &organization.parent_id {
+                if !org_ids.contains(parent_id) {
+                    errors.push(ValidatorError {
+                        error: format!(
+                            "Organization {} refers to invalid parent organization {}",
+                            organization.id, parent_id
+                        ),
+                        validator_type: ValidatorType::InvalidForeignKey,
+                    });
+                }
+            }
+        }
+
+        for post in self.posts.iter() {
+            if !org_ids.contains(&post.organization_id) {
+                errors.push(ValidatorError {
+                    error: format!(
+                        "Post {} refers to invalid organization {}",
+                        post.id, post.organization_id
+                    ),
+                    validator_type: ValidatorType::InvalidForeignKey,
+                });
+            }
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -1340,7 +1456,8 @@ impl Popolo {
         name: &str,
         chamber_id: &str,
         date: NaiveDate,
-    ) -> Option<String> {
+        include_historical_names: bool,
+    ) -> Result<Option<String>, String> {
         let slug = reduce_to_slug(name);
 
         let post_ids: HashSet<&str> = self
@@ -1369,6 +1486,7 @@ impl Popolo {
             .map(|m| m.person_id.as_str())
             .collect();
 
+        let mut matches = HashSet::new();
         for pt in self.persons.iter() {
             if let PersonType::Person(person) = pt {
                 if !active_person_ids.contains(person.id.as_str()) {
@@ -1377,10 +1495,12 @@ impl Popolo {
                 if let Some(names) = &person.other_names {
                     for n in names {
                         let (start, end) = n.date_range();
-                        if start.earliest_date <= date && date <= end.latest_date {
-                            for variant in n.name_variants() {
+                        if include_historical_names
+                            || (start.earliest_date <= date && date <= end.latest_date)
+                        {
+                            for variant in n.name_variants(false) {
                                 if reduce_to_slug(&variant) == slug {
-                                    return Some(person.id.clone());
+                                    matches.insert(person.id.clone());
                                 }
                             }
                         }
@@ -1388,7 +1508,11 @@ impl Popolo {
                 }
             }
         }
-        None
+        match matches.len() {
+            0 => Ok(None),
+            1 => Ok(matches.into_iter().next()),
+            _ => Err(format!("Ambiguous person name: {}", name)),
+        }
     }
 
     /// Find the person_id for a person with a matching identifier in the given scheme.
