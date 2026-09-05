@@ -25,6 +25,8 @@ from .dates import ApproxDate, FixedDate
 # Import from the compiled Rust extension
 # ---------------------------------------------------------------------------
 from ._mysoc_validator_fast import (  # type: ignore[import]
+    Area as _RustArea,
+    LordName as _RustLordName,
     Membership as _RustMembership,
     MembershipCollection as _RustMembershipCollection,
     MembershipRedirect as _RustMembershipRedirect,
@@ -41,6 +43,8 @@ from ._mysoc_validator_fast import (  # type: ignore[import]
 # Re-export Rust types under their expected names.
 # Users import Membership, Person, etc. from this module.
 Membership = _RustMembership
+Area = _RustArea
+LordName = _RustLordName
 MembershipRedirect = _RustMembershipRedirect
 Organization = _RustOrganization
 Person = _RustPerson
