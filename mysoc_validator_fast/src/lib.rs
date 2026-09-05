@@ -11,6 +11,7 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use std::sync::{Arc, RwLock};
 
 mod interests;
+mod transcripts;
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -2308,6 +2309,7 @@ fn _mysoc_validator_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<interests::PyRegmemDetailGroup>()?;
     m.add_class::<interests::PyRegmemDetail>()?;
     m.add_class::<interests::PyRegmemAnnotation>()?;
+    transcripts::register_transcript_classes(m)?;
     Ok(())
 }
 
