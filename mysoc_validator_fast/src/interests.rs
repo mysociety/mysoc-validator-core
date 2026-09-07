@@ -13,7 +13,7 @@
 use chrono::NaiveDate;
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyType};
+use pyo3::types::{PyBool, PyDict, PyList, PyType};
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use regmem_validator as rv;
 use rust_decimal::Decimal;
@@ -84,6 +84,14 @@ fn py_to_detail_value(obj: &Bound<'_, PyAny>) -> PyResult<rv::DetailValue> {
     }
     if let Ok(s) = obj.extract::<String>() {
         return Ok(rv::DetailValue::Str(s));
+    }
+    if let Ok(items) = obj.downcast::<PyList>() {
+        let mut groups = Vec::with_capacity(items.len());
+        for item in items {
+            let group = item.extract::<PyRef<PyRegmemDetailGroup>>()?;
+            groups.push(group.with_group(Clone::clone));
+        }
+        return Ok(rv::DetailValue::Container(groups));
     }
     Err(PyValueError::new_err(
         "Unsupported detail value type (expected str, int, float, bool, date or Decimal)",
@@ -231,6 +239,59 @@ impl PyRegmemDetail {
         }
     }
 
+    fn dict_value(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        let Some(value) = &self.inner.value else {
+            return Ok(None);
+        };
+        if let rv::DetailValue::Container(groups) = value {
+            let rows = PyList::empty_bound(py);
+            for group in groups {
+                let row = PyDict::new_bound(py);
+                for detail in &group.0 {
+                    if let Some(slug) = &detail.slug {
+                        row.set_item(
+                            slug,
+                            match &detail.value {
+                                Some(value) => detail_value_to_py(py, value)?,
+                                None => py.None(),
+                            },
+                        )?;
+                    }
+                }
+                rows.append(row)?;
+            }
+            Ok(Some(rows.into()))
+        } else {
+            Ok(Some(detail_value_to_py(py, value)?))
+        }
+    }
+
+    fn iter_sub_details(&self) -> Vec<PyRegmemDetail> {
+        self.inner
+            .sub_detail_groups()
+            .iter()
+            .flat_map(|group| group.0.iter())
+            .cloned()
+            .map(|inner| PyRegmemDetail { inner })
+            .collect()
+    }
+
+    #[classmethod]
+    fn parameterized_class_from_str<'py>(
+        cls: &Bound<'py, PyType>,
+        _type_str: &str,
+    ) -> Bound<'py, PyType> {
+        cls.clone()
+    }
+
+    #[classmethod]
+    fn __class_getitem__<'py>(
+        cls: &Bound<'py, PyType>,
+        _item: &Bound<'_, PyAny>,
+    ) -> Bound<'py, PyType> {
+        cls.clone()
+    }
+
     #[setter(value)]
     fn set_value(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         if value.is_none() {
@@ -329,8 +390,22 @@ impl PyRegmemDetailGroup {
 #[pymethods]
 impl PyRegmemDetailGroup {
     #[new]
-    fn py_new() -> Self {
-        PyRegmemDetailGroup::standalone(rv::RegmemDetailGroup::new())
+    #[pyo3(signature = (*, root=None))]
+    fn py_new(root: Option<Vec<PyRef<'_, PyRegmemDetail>>>) -> Self {
+        let details = root
+            .unwrap_or_default()
+            .iter()
+            .map(|detail| detail.inner.clone())
+            .collect();
+        PyRegmemDetailGroup::standalone(rv::RegmemDetailGroup(details))
+    }
+
+    #[staticmethod]
+    fn model_validate(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let value = crate::py_to_json_value(value)?;
+        let group: rv::RegmemDetailGroup = serde_json::from_value(value)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        Ok(PyRegmemDetailGroup::standalone(group))
     }
 
     fn __len__(&self) -> usize {
@@ -349,6 +424,11 @@ impl PyRegmemDetailGroup {
                 })
             }
         })
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyResult<PyObject> {
+        let py = slf.py();
+        Ok(slf.root().into_py(py).call_method0(py, "__iter__")?)
     }
 
     #[getter]
@@ -481,6 +561,14 @@ pub struct PyRegmemEntry {
 }
 
 impl PyRegmemEntry {
+    fn owned_entry(&self) -> rv::RegmemEntry {
+        let guard = self.shared.read().unwrap();
+        guard
+            .entry_at(&self.loc)
+            .expect("entry not found in register")
+            .clone()
+    }
+
     fn with_base<R>(&self, f: impl FnOnce(&rv::RegmemInfoBase) -> R) -> R {
         let guard = self.shared.read().unwrap();
         let entry = guard
@@ -501,6 +589,101 @@ impl PyRegmemEntry {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemEntry {
+    #[new]
+    #[pyo3(signature = (*, id=None, info_type=None, content="", content_format=None,
+        date_registered=None, date_published=None, date_updated=None, date_received=None,
+        null_entry=false, annotations=None, details=None, sub_entries=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn py_new(
+        id: Option<String>,
+        info_type: Option<String>,
+        content: &str,
+        content_format: Option<String>,
+        date_registered: Option<&Bound<'_, PyAny>>,
+        date_published: Option<&Bound<'_, PyAny>>,
+        date_updated: Option<&Bound<'_, PyAny>>,
+        date_received: Option<&Bound<'_, PyAny>>,
+        null_entry: bool,
+        annotations: Option<Vec<PyRef<'_, PyRegmemAnnotation>>>,
+        details: Option<PyRef<'_, PyRegmemDetailGroup>>,
+        sub_entries: Option<Vec<PyRef<'_, PyRegmemEntry>>>,
+    ) -> PyResult<Self> {
+        let parse_date = |value: Option<&Bound<'_, PyAny>>| -> PyResult<Option<NaiveDate>> {
+            value
+                .map(|value| {
+                    value.extract::<NaiveDate>().or_else(|_| {
+                        NaiveDate::parse_from_str(value.extract::<String>()?.as_str(), "%Y-%m-%d")
+                            .map_err(|error| PyValueError::new_err(error.to_string()))
+                    })
+                })
+                .transpose()
+        };
+        let entry = rv::RegmemEntry {
+            info_type: if info_type.as_deref() == Some("subentry") {
+                rv::EntryType::Subentry
+            } else {
+                rv::EntryType::Entry
+            },
+            base: rv::RegmemInfoBase {
+                id,
+                content: content.to_string(),
+                content_format: content_type_from_str(
+                    content_format.as_deref().unwrap_or("string"),
+                ),
+                date_registered: parse_date(date_registered)?,
+                date_published: parse_date(date_published)?,
+                date_updated: parse_date(date_updated)?,
+                date_received: parse_date(date_received)?,
+                null_entry,
+                annotations: annotations
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|annotation| annotation.inner.clone())
+                    .collect(),
+                details: details
+                    .map(|details| details.with_group(Clone::clone))
+                    .unwrap_or_else(rv::RegmemDetailGroup::new),
+                sub_entries: sub_entries
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|entry| entry.owned_entry())
+                    .collect(),
+            },
+        };
+        let register = rv::RegmemRegister {
+            chamber: None,
+            language: None,
+            published_date: None,
+            annotations: Vec::new(),
+            summaries: Vec::new(),
+            persons: vec![rv::RegmemPerson {
+                person_id: String::new(),
+                person_name: String::new(),
+                published_date: NaiveDate::from_ymd_opt(1, 1, 1).unwrap(),
+                chamber: rv::Chamber::Commons,
+                language: rv::Language::En,
+                categories: vec![rv::RegmemCategory {
+                    category_id: String::new(),
+                    category_name: String::new(),
+                    category_description: None,
+                    legislation_or_rule_name: None,
+                    legislation_or_rule_url: None,
+                    summaries: Vec::new(),
+                    entries: vec![entry],
+                }],
+            }],
+        };
+        Ok(Self {
+            shared: Arc::new(RwLock::new(register)),
+            loc: rv::EntryLocation {
+                person: 0,
+                category: 0,
+                entry: 0,
+                sub_entry: None,
+            },
+        })
+    }
+
     #[getter]
     fn info_type(&self) -> String {
         let guard = self.shared.read().unwrap();
@@ -623,6 +806,67 @@ impl PyRegmemEntry {
         }
     }
 
+    #[pyo3(signature = (reduce=None))]
+    fn details_dict(
+        &self,
+        py: Python<'_>,
+        reduce: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<PyDict>> {
+        let base = self.with_base(Clone::clone);
+        let output = PyDict::new_bound(py);
+        output.set_item("id", base.comparable_id())?;
+        output.set_item("content", base.content)?;
+        if let Some(date) = base.date_registered {
+            output.set_item("date_registered", date.format("%Y-%m-%d").to_string())?;
+        }
+        if let Some(date) = base.date_published {
+            output.set_item("date_published", date.format("%Y-%m-%d").to_string())?;
+        }
+        for detail in &base.details.0 {
+            if let Some(slug) = &detail.slug {
+                output.set_item(
+                    slug,
+                    match &detail.value {
+                        Some(value) => detail_value_to_py(py, value)?,
+                        None => py.None(),
+                    },
+                )?;
+            }
+        }
+        if let Some(reduce) = reduce {
+            for (key, slugs) in reduce.iter() {
+                let key: String = key.extract()?;
+                let Some(value) = output.get_item(&key)? else {
+                    continue;
+                };
+                let Ok(groups) = value.downcast::<PyList>() else {
+                    continue;
+                };
+                for slug in slugs.extract::<Vec<String>>()? {
+                    let values = PyList::empty_bound(py);
+                    for group in groups {
+                        if let Ok(group) = group.extract::<PyRef<PyRegmemDetailGroup>>() {
+                            if let Some(detail) = group.with_group(|details| {
+                                details
+                                    .0
+                                    .iter()
+                                    .find(|d| d.slug.as_deref() == Some(slug.as_str()))
+                                    .cloned()
+                            }) {
+                                if let Some(value) = detail.value {
+                                    values.append(detail_value_to_py(py, &value)?)?;
+                                }
+                            }
+                        }
+                    }
+                    output.set_item(slug, values)?;
+                }
+                output.del_item(key)?;
+            }
+        }
+        Ok(output.into())
+    }
+
     /// Add scalar key/value details (mirrors upstream `add_details`).
     #[pyo3(signature = (*, source=None, **values))]
     fn add_details(
@@ -666,6 +910,10 @@ pub struct PyRegmemCategory {
 }
 
 impl PyRegmemCategory {
+    fn owned_category(&self) -> rv::RegmemCategory {
+        self.with_category(Clone::clone)
+    }
+
     fn with_category<R>(&self, f: impl FnOnce(&rv::RegmemCategory) -> R) -> R {
         let guard = self.shared.read().unwrap();
         let category = &guard.persons[self.person].categories[self.category];
@@ -676,6 +924,59 @@ impl PyRegmemCategory {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemCategory {
+    #[new]
+    #[pyo3(signature = (*, category_id="", category_name, category_description=None,
+        legislation_or_rule_name=None, legislation_or_rule_url=None, summaries=None,
+        entries=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn py_new(
+        category_id: &str,
+        category_name: String,
+        category_description: Option<String>,
+        legislation_or_rule_name: Option<String>,
+        legislation_or_rule_url: Option<String>,
+        summaries: Option<Vec<PyRef<'_, PyRegmemSummary>>>,
+        entries: Option<Vec<PyRef<'_, PyRegmemEntry>>>,
+    ) -> Self {
+        let category = rv::RegmemCategory {
+            category_id: category_id.to_string(),
+            category_name,
+            category_description,
+            legislation_or_rule_name,
+            legislation_or_rule_url,
+            summaries: summaries
+                .unwrap_or_default()
+                .iter()
+                .map(|summary| summary.inner.clone())
+                .collect(),
+            entries: entries
+                .unwrap_or_default()
+                .iter()
+                .map(|entry| entry.owned_entry())
+                .collect(),
+        };
+        let register = rv::RegmemRegister {
+            chamber: None,
+            language: None,
+            published_date: None,
+            annotations: Vec::new(),
+            summaries: Vec::new(),
+            persons: vec![rv::RegmemPerson {
+                person_id: String::new(),
+                person_name: String::new(),
+                published_date: NaiveDate::from_ymd_opt(1, 1, 1).unwrap(),
+                chamber: rv::Chamber::Commons,
+                language: rv::Language::En,
+                categories: vec![category],
+            }],
+        };
+        Self {
+            shared: Arc::new(RwLock::new(register)),
+            person: 0,
+            category: 0,
+        }
+    }
+
     #[getter]
     fn category_id(&self) -> String {
         self.with_category(|c| c.category_id.clone())
@@ -723,6 +1024,17 @@ impl PyRegmemCategory {
             .collect()
     }
 
+    fn entries_and_subentries(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRegmemEntry>>> {
+        let entries = self.entries(py)?;
+        let mut output = Vec::new();
+        for entry in entries {
+            let sub_entries = entry.borrow(py).sub_entries(py)?;
+            output.push(entry);
+            output.extend(sub_entries);
+        }
+        Ok(output)
+    }
+
     #[getter]
     fn summaries(&self) -> Vec<PyRegmemSummary> {
         self.with_category(|c| {
@@ -754,6 +1066,10 @@ pub struct PyRegmemPerson {
 }
 
 impl PyRegmemPerson {
+    fn owned_person(&self) -> rv::RegmemPerson {
+        self.with_person(Clone::clone)
+    }
+
     fn with_person<R>(&self, f: impl FnOnce(&rv::RegmemPerson) -> R) -> R {
         let guard = self.shared.read().unwrap();
         f(&guard.persons[self.person])
@@ -763,6 +1079,53 @@ impl PyRegmemPerson {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemPerson {
+    #[new]
+    #[pyo3(signature = (*, person_id, person_name, published_date, chamber, language="en",
+        categories=None))]
+    fn py_new(
+        person_id: String,
+        person_name: String,
+        published_date: &Bound<'_, PyAny>,
+        chamber: &Bound<'_, PyAny>,
+        language: &str,
+        categories: Option<Vec<PyRef<'_, PyRegmemCategory>>>,
+    ) -> PyResult<Self> {
+        let published_date = published_date.extract::<NaiveDate>().or_else(|_| {
+            NaiveDate::parse_from_str(published_date.extract::<String>()?.as_str(), "%Y-%m-%d")
+                .map_err(|error| PyValueError::new_err(error.to_string()))
+        })?;
+        let chamber_value = chamber.str()?.to_str()?.to_string();
+        let chamber = rv::Chamber::from_str_opt(&chamber_value)
+            .ok_or_else(|| PyValueError::new_err(format!("Unknown chamber: {chamber_value}")))?;
+        let person = rv::RegmemPerson {
+            person_id,
+            person_name,
+            published_date,
+            chamber,
+            language: if language == "cy" {
+                rv::Language::Cy
+            } else {
+                rv::Language::En
+            },
+            categories: categories
+                .unwrap_or_default()
+                .iter()
+                .map(|category| category.owned_category())
+                .collect(),
+        };
+        Ok(Self {
+            shared: Arc::new(RwLock::new(rv::RegmemRegister {
+                chamber: None,
+                language: None,
+                published_date: None,
+                annotations: Vec::new(),
+                summaries: Vec::new(),
+                persons: vec![person],
+            })),
+            person: 0,
+        })
+    }
+
     #[getter]
     fn person_id(&self) -> String {
         self.with_person(|p| p.person_id.clone())
@@ -847,6 +1210,64 @@ pub struct PyRegmemRegister {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemRegister {
+    #[new]
+    #[pyo3(signature = (*, chamber=None, language="en", published_date=None,
+        annotations=None, summaries=None, persons=None))]
+    fn py_new(
+        chamber: Option<&Bound<'_, PyAny>>,
+        language: &str,
+        published_date: Option<&Bound<'_, PyAny>>,
+        annotations: Option<Vec<PyRef<'_, PyRegmemAnnotation>>>,
+        summaries: Option<Vec<PyRef<'_, PyRegmemSummary>>>,
+        persons: Option<Vec<PyRef<'_, PyRegmemPerson>>>,
+    ) -> PyResult<Self> {
+        let chamber = chamber
+            .map(|value| {
+                let value = value.str()?.to_str()?.to_string();
+                rv::Chamber::from_str_opt(&value)
+                    .ok_or_else(|| PyValueError::new_err(format!("Unknown chamber: {value}")))
+            })
+            .transpose()?;
+        let published_date = published_date
+            .map(|value| {
+                value.extract::<NaiveDate>().or_else(|_| {
+                    NaiveDate::parse_from_str(value.extract::<String>()?.as_str(), "%Y-%m-%d")
+                        .map_err(|error| PyValueError::new_err(error.to_string()))
+                })
+            })
+            .transpose()?;
+        let register = rv::RegmemRegister {
+            chamber,
+            language: Some(if language == "cy" {
+                rv::Language::Cy
+            } else {
+                rv::Language::En
+            }),
+            published_date,
+            annotations: annotations
+                .unwrap_or_default()
+                .iter()
+                .map(|annotation| annotation.inner.clone())
+                .collect(),
+            summaries: summaries
+                .unwrap_or_default()
+                .iter()
+                .map(|summary| summary.inner.clone())
+                .collect(),
+            persons: persons
+                .unwrap_or_default()
+                .iter()
+                .map(|person| person.owned_person())
+                .collect(),
+        };
+        register
+            .either_global_or_person_chambers()
+            .map_err(PyValueError::new_err)?;
+        Ok(Self {
+            shared: Arc::new(RwLock::new(register)),
+        })
+    }
+
     #[classmethod]
     #[pyo3(name = "model_validate_json", signature = (json_str, validate = true))]
     fn py_model_validate_json(
@@ -865,6 +1286,10 @@ impl PyRegmemRegister {
     fn model_dump_json(&self) -> String {
         let guard = self.shared.read().unwrap();
         escape_non_ascii(guard.model_dump_json())
+    }
+
+    fn __eq__(&self, other: PyRef<'_, Self>) -> bool {
+        *self.shared.read().unwrap() == *other.shared.read().unwrap()
     }
 
     #[getter]
@@ -953,6 +1378,8 @@ impl PyRegmemRegister {
     fn iter_entries(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
         let locs = self.shared.read().unwrap().iter_entry_locations();
         let mut out: Vec<PyObject> = Vec::with_capacity(locs.len());
+        let mut parents: std::collections::HashMap<(usize, usize, usize), PyObject> =
+            std::collections::HashMap::new();
         for loc in locs {
             let person = Py::new(
                 py,
@@ -976,29 +1403,21 @@ impl PyRegmemRegister {
                     loc,
                 },
             )?;
-            let parent: PyObject = match loc.sub_entry {
-                Some(_) => {
-                    let parent_loc = rv::EntryLocation {
-                        sub_entry: None,
-                        ..loc
-                    };
-                    Py::new(
-                        py,
-                        PyRegmemEntry {
-                            shared: self.shared.clone(),
-                            loc: parent_loc,
-                        },
-                    )?
-                    .into_py(py)
-                }
-                None => py.None(),
-            };
+            let key = (loc.person, loc.category, loc.entry);
+            let entry_object = entry.into_py(py);
+            let parent = loc
+                .sub_entry
+                .and_then(|_| parents.get(&key).map(|parent| parent.clone_ref(py)))
+                .unwrap_or_else(|| py.None());
+            if loc.sub_entry.is_none() {
+                parents.insert(key, entry_object.clone_ref(py));
+            }
             let tuple = pyo3::types::PyTuple::new_bound(
                 py,
                 &[
                     person.into_py(py),
                     category.into_py(py),
-                    entry.into_py(py),
+                    entry_object,
                     parent,
                 ],
             );

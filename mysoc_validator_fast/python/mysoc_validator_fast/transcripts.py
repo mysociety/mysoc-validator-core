@@ -5,17 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from glob import glob
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, NamedTuple
 
 from ._mysoc_validator_fast import (  # type: ignore[import]
     Agreement,
     Division,
+    DivisionCount,
     GIDRedirect,
     MajorHeading,
     MinorHeading,
+    Motion,
+    MSPName,
     OralHeading,
     Question,
     Reply,
+    RepList,
+    RepName,
     Source,
     Speech,
     SpeechItem,
@@ -37,6 +42,17 @@ class TranscriptFileResult:
     @property
     def valid(self) -> bool:
         return self.error is None
+
+
+class HeaderSpeechTuple(NamedTuple):
+    """
+    A speech paired with the headings active at its position.
+    """
+
+    major_heading: MajorHeading | None
+    minor_heading: MinorHeading | None
+    speech: Speech
+    speech_index: int
 
 
 class TranscriptGroup:
@@ -104,12 +120,18 @@ class TranscriptGroup:
 __all__ = [
     "Agreement",
     "Division",
+    "DivisionCount",
     "GIDRedirect",
+    "HeaderSpeechTuple",
     "MajorHeading",
     "MinorHeading",
+    "Motion",
+    "MSPName",
     "OralHeading",
     "Question",
     "Reply",
+    "RepList",
+    "RepName",
     "Source",
     "Speech",
     "SpeechItem",
