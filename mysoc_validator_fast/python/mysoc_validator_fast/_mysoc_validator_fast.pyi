@@ -782,7 +782,7 @@ class RegmemRegister:
     """A release of a register, backed by a Rust Arc<RwLock<RegmemRegister>>."""
 
     def __init__(
-        self, *, chamber: Optional[Any] = None, language: str = "en",
+        self, *, chamber: Optional[Any] = None, language: Optional[str] = "en",
         published_date: Optional[date | str] = None,
         annotations: Optional[List[RegmemAnnotation]] = None,
         summaries: Optional[List[RegmemSummary]] = None,
