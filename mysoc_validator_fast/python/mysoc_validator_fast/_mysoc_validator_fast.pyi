@@ -1,5 +1,5 @@
 """
-Type stubs for the _popolo_validator_python Rust extension module.
+Type stubs for the _mysoc_validator_fast Rust extension module.
 
 All types here live in Rust; this file describes their Python-visible interface.
 """
