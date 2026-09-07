@@ -1,3 +1,12 @@
+//! Partial dates represented by inclusive earliest/latest bounds.
+//!
+//! Precision controls the compact JSON spelling (year, month, day or range).
+//! Rust equality compares bounds, and ordering sorts by earliest then latest.
+//! Overlap is deliberately a named predicate: unlike equality it is not
+//! transitive. Python's historical fuzzy comparisons live in `python.rs`.
+//! Public bounds are retained for Rust API compatibility; use the setters when
+//! changing them so the cached precision used by `isoformat` stays in sync.
+
 use chrono::{Datelike, Duration, NaiveDate};
 use std::fmt;
 
@@ -5,13 +14,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
 #[cfg(feature = "python")]
-use pyo3::exceptions::PyTypeError;
-#[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(feature = "python")]
-use pyo3::types::{PyString, PyType};
+use pyo3_stub_gen::derive::gen_stub_pyclass;
 #[cfg(feature = "python")]
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+mod python;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DateCompleteness {
@@ -98,10 +105,6 @@ fn determine_completeness(date: &str) -> DateCompleteness {
     }
 }
 
-// ---------------------------------------------------------------------------
-// FuzzyDate struct
-// ---------------------------------------------------------------------------
-
 #[cfg_attr(feature = "python", gen_stub_pyclass)]
 #[cfg_attr(feature = "python", pyclass(subclass, module = "fuzzy_date"))]
 #[derive(Debug, Clone)]
@@ -110,10 +113,6 @@ pub struct FuzzyDate {
     pub latest_date: NaiveDate,
     completeness: DateCompleteness,
 }
-
-// ---------------------------------------------------------------------------
-// Serialisation (always compiled)
-// ---------------------------------------------------------------------------
 
 impl Serialize for FuzzyDate {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -130,153 +129,9 @@ impl<'de> Deserialize<'de> for FuzzyDate {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        FuzzyDate::fromisoformat(&s).map_err(serde::de::Error::custom)
+        Self::fromisoformat(&s).map_err(serde::de::Error::custom)
     }
 }
-
-// ---------------------------------------------------------------------------
-// Python methods (compiled only with the "python" feature)
-// ---------------------------------------------------------------------------
-
-#[cfg(feature = "python")]
-#[gen_stub_pymethods]
-#[pymethods]
-impl FuzzyDate {
-    #[new]
-    fn new_py(earliest_date: NaiveDate, latest_date: NaiveDate) -> Self {
-        Self::new(earliest_date, latest_date)
-    }
-
-    #[getter]
-    fn earliest_date(&self) -> NaiveDate {
-        self.earliest_date
-    }
-
-    #[getter]
-    fn latest_date(&self) -> NaiveDate {
-        self.latest_date
-    }
-
-    #[setter]
-    fn set_earliest_date(&mut self, earliest_date: &Bound<'_, PyAny>) -> PyResult<()> {
-        if let Ok(date) = earliest_date.extract::<NaiveDate>() {
-            self.set_earliest(date);
-            Ok(())
-        } else {
-            Err(PyTypeError::new_err("Invalid date format"))
-        }
-    }
-
-    #[setter]
-    fn set_latest_date(&mut self, latest_date: &Bound<'_, PyAny>) -> PyResult<()> {
-        if let Ok(date) = latest_date.extract::<NaiveDate>() {
-            self.set_latest(date);
-            Ok(())
-        } else {
-            Err(PyTypeError::new_err("Invalid date format"))
-        }
-    }
-
-    fn __eq__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        if let Ok(other_date) = other.extract::<NaiveDate>() {
-            Ok(self.eq(&other_date))
-        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
-            Ok(self.eq(&other_date))
-        } else if let Ok(other_date_str) = other.extract::<String>() {
-            Ok(self.isoformat() == other_date_str)
-        } else {
-            Err(PyTypeError::new_err(
-                "Comparison not supported between these types",
-            ))
-        }
-    }
-
-    fn __lt__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        if let Ok(other_date) = other.extract::<NaiveDate>() {
-            Ok(self.partial_cmp(&other_date) == Some(std::cmp::Ordering::Less))
-        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
-            Ok(self.partial_cmp(&other_date) == Some(std::cmp::Ordering::Less))
-        } else {
-            Err(PyTypeError::new_err(
-                "Comparison not supported between these types",
-            ))
-        }
-    }
-
-    fn __gt__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        if let Ok(other_date) = other.extract::<NaiveDate>() {
-            Ok(self.partial_cmp(&other_date) == Some(std::cmp::Ordering::Greater))
-        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
-            Ok(self.partial_cmp(&other_date) == Some(std::cmp::Ordering::Greater))
-        } else {
-            Err(PyTypeError::new_err(
-                "Comparison not supported between these types",
-            ))
-        }
-    }
-
-    fn __le__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        if let Ok(other_date) = other.extract::<NaiveDate>() {
-            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Greater))
-        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
-            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Greater))
-        } else {
-            Err(PyTypeError::new_err(
-                "Comparison not supported between these types",
-            ))
-        }
-    }
-
-    fn __ge__(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
-        if let Ok(other_date) = other.extract::<NaiveDate>() {
-            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Less))
-        } else if let Ok(other_date) = other.extract::<FuzzyDate>() {
-            Ok(self.partial_cmp(&other_date) != Some(std::cmp::Ordering::Less))
-        } else {
-            Err(PyTypeError::new_err(
-                "Comparison not supported between these types",
-            ))
-        }
-    }
-
-    fn __add__(&self, py: Python, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
-        let days: i64 = other.getattr("days")?.extract()?;
-        let result = self.earliest_date + chrono::Duration::days(days);
-        let date_cls = py.import_bound("datetime")?.getattr("date")?;
-        date_cls
-            .call1((result.year(), result.month(), result.day()))
-            .map(|d| d.into_py(py))
-    }
-
-    #[pyo3(name = "fromisoformat")]
-    #[classmethod]
-    fn py_fromisoformat(_cls: &Bound<'_, PyType>, iso8601_date_string: &str) -> PyResult<Self> {
-        FuzzyDate::fromisoformat(iso8601_date_string)
-            .map_err(pyo3::exceptions::PyValueError::new_err)
-    }
-
-    #[pyo3(name = "isoformat")]
-    fn py_isoformat(&self) -> String {
-        self.isoformat()
-    }
-
-    fn __str__(&self) -> String {
-        self.isoformat()
-    }
-
-    fn __repr__(slf: &Bound<'_, Self>) -> String {
-        let class_name: Bound<'_, PyString> = slf.get_type().qualname().unwrap();
-        let in_self = slf.borrow();
-        format!(
-            "{}({}, {})",
-            class_name, in_self.earliest_date, in_self.latest_date
-        )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Pure-Rust impl (always compiled)
-// ---------------------------------------------------------------------------
 
 impl FuzzyDate {
     pub fn new(earliest_date: NaiveDate, latest_date: NaiveDate) -> Self {
@@ -351,14 +206,41 @@ impl FuzzyDate {
         })
     }
 
-    pub fn approx_equal(&self, date: &NaiveDate) -> bool {
+    /// Whether a precise date falls within these inclusive bounds.
+    pub fn contains(&self, date: &NaiveDate) -> bool {
         date >= &self.earliest_date && date <= &self.latest_date
+    }
+
+    /// Fuzzy matching is separate from Rust equality, which compares exact bounds.
+    pub fn overlaps(&self, other: &Self) -> bool {
+        self == other
+            || self.contains(&other.earliest_date)
+            || self.contains(&other.latest_date)
+            || other.contains(&self.earliest_date)
+            || other.contains(&self.latest_date)
+    }
+
+    /// Whether this entire interval precedes the other interval.
+    pub fn is_before(&self, other: &Self) -> bool {
+        self.latest_date < other.earliest_date
+    }
+
+    /// Whether this entire interval follows the other interval.
+    pub fn is_after(&self, other: &Self) -> bool {
+        // Bounds are publicly mutable. Preserve the historical comparator's
+        // before-first precedence even if a caller has reversed them.
+        !self.is_before(other) && self.earliest_date > other.latest_date
+    }
+
+    /// Compatibility spelling for precise-date containment.
+    pub fn approx_equal(&self, date: &NaiveDate) -> bool {
+        self.contains(date)
     }
 }
 
 impl From<String> for FuzzyDate {
     fn from(s: String) -> FuzzyDate {
-        FuzzyDate::fromisoformat(&s).unwrap()
+        Self::fromisoformat(&s).unwrap()
     }
 }
 
@@ -383,17 +265,13 @@ impl std::ops::Add<Duration> for FuzzyDate {
 
 impl PartialEq<FuzzyDate> for FuzzyDate {
     fn eq(&self, other: &FuzzyDate) -> bool {
-        (self.earliest_date == other.earliest_date && self.latest_date == other.latest_date)
-            || self.approx_equal(&other.earliest_date)
-            || self.approx_equal(&other.latest_date)
-            || other.approx_equal(&self.earliest_date)
-            || other.approx_equal(&self.latest_date)
+        self.earliest_date == other.earliest_date && self.latest_date == other.latest_date
     }
 }
 
 impl PartialEq<str> for FuzzyDate {
     fn eq(&self, other: &str) -> bool {
-        match FuzzyDate::fromisoformat(other) {
+        match Self::fromisoformat(other) {
             Ok(date) => self == &date,
             Err(_) => false,
         }
@@ -402,38 +280,29 @@ impl PartialEq<str> for FuzzyDate {
 
 impl PartialEq<NaiveDate> for FuzzyDate {
     fn eq(&self, other: &NaiveDate) -> bool {
-        self.approx_equal(other)
+        self.earliest_date == *other && self.latest_date == *other
     }
 }
 
 impl PartialOrd for FuzzyDate {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.latest_date < other.earliest_date {
-            Some(std::cmp::Ordering::Less)
-        } else if self.earliest_date > other.latest_date {
-            Some(std::cmp::Ordering::Greater)
-        } else {
-            Some(std::cmp::Ordering::Equal)
-        }
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for FuzzyDate {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+        (self.earliest_date, self.latest_date).cmp(&(other.earliest_date, other.latest_date))
     }
 }
 
 impl PartialOrd<NaiveDate> for FuzzyDate {
     fn partial_cmp(&self, other: &NaiveDate) -> Option<std::cmp::Ordering> {
-        if other > &self.latest_date {
-            Some(std::cmp::Ordering::Less)
-        } else if other < &self.earliest_date {
-            Some(std::cmp::Ordering::Greater)
-        } else {
-            Some(std::cmp::Ordering::Equal)
-        }
+        Some((self.earliest_date, self.latest_date).cmp(&(*other, *other)))
     }
 }
 
 impl Eq for FuzzyDate {}
+
+#[cfg(test)]
+mod tests;
