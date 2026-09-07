@@ -14,7 +14,7 @@ Rust types under the names expected by callers.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar, Type, Union
+from typing import ClassVar, Iterator, NamedTuple, Type, Union
 
 from .consts import Chamber, CommonKey
 
@@ -36,10 +36,33 @@ from ._mysoc_validator_fast import (  # type: ignore[import]
 RegmemAnnotation = _RustRegmemAnnotation
 RegmemCategory = _RustRegmemCategory
 RegmemDetail = _RustRegmemDetail
+RegmemDetailContainer = _RustRegmemDetail
 RegmemDetailGroup = _RustRegmemDetailGroup
 RegmemEntry = _RustRegmemEntry
 RegmemPerson = _RustRegmemPerson
 RegmemSummary = _RustRegmemSummary
+
+
+def slugify(value: str) -> str:
+    """
+    Produce the stable machine key used for interest detail names.
+    """
+
+    filtered = "".join(
+        character for character in value if character.isalnum() or character == " "
+    )
+    return filtered.strip().replace(" ", "_").lower().replace("__", "_")
+
+
+class EntryIterator(NamedTuple):
+    """
+    One entry and its location within a register.
+    """
+
+    person: RegmemPerson
+    category: RegmemCategory
+    entry: RegmemEntry
+    parent_entry: RegmemEntry | None
 
 
 class RegmemRegister(_RustRegmemRegister):
@@ -61,6 +84,17 @@ class RegmemRegister(_RustRegmemRegister):
         """Load and validate a register from a JSON file."""
         return cls.model_validate_json(Path(path).read_text(), cross_validate)
 
-    def to_path(self, path: Union[Path, str]) -> None:
+    def to_path(self, path: Union[Path, str], full: bool = False) -> None:
         """Write the register to a JSON file."""
-        Path(path).write_text(self.model_dump_json())
+
+        content = self.model_dump_json()
+        if not full:
+            import json
+
+            content = json.dumps(json.loads(content), separators=(",", ":"))
+        Path(path).write_text(content)
+
+    def iter_entries(self) -> Iterator[EntryIterator]:
+        """Iterate entries with named parent context."""
+
+        return (EntryIterator(*row) for row in super().iter_entries())

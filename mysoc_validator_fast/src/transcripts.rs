@@ -95,6 +95,19 @@ macro_rules! transcript_item_class {
 
             #[getter]
             fn content(&self, py: Python<'_>) -> PyResult<PyObject> {
+                if $python_name == "DivisionCount" {
+                    return Ok(self
+                        .item
+                        .content
+                        .text
+                        .trim()
+                        .parse::<i64>()
+                        .ok()
+                        .into_py(py));
+                }
+                if matches!($python_name, "MSPName" | "RepName") {
+                    return Ok(self.item.content.text.clone().into_py(py));
+                }
                 let content = PyDict::new_bound(py);
                 content.set_item("text", &self.item.content.text)?;
                 content.set_item("raw", &self.item.content.raw)?;
@@ -158,6 +171,169 @@ macro_rules! transcript_item_class {
                     .and_then(|value| value.parse().ok())
             }
 
+            #[getter]
+            fn oldgid(&self) -> Option<String> {
+                self.item.attributes.get("oldgid").cloned()
+            }
+
+            #[getter]
+            fn newgid(&self) -> Option<String> {
+                self.item.attributes.get("newgid").cloned()
+            }
+
+            #[getter]
+            fn matchtype(&self) -> Option<String> {
+                self.item.attributes.get("matchtype").cloned()
+            }
+
+            #[getter]
+            fn agreement_id(&self) -> Option<String> {
+                self.item.attributes.get("agreement_id").cloned()
+            }
+
+            #[getter]
+            fn speech_id(&self) -> Option<String> {
+                self.item.attributes.get("speech_id").cloned()
+            }
+
+            #[getter]
+            fn agreementnumber(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("agreementnumber")
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn ayes(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("ayes")
+                    .or_else(|| self.item.attributes.get("for"))
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn noes(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("noes")
+                    .or_else(|| self.item.attributes.get("against"))
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn neutral(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("neutral")
+                    .or_else(|| self.item.attributes.get("abstentions"))
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn absent(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("absent")
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn spoiled(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("spoiledvotes")
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn tellerayes(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("tellerayes")
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn tellernoes(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("tellernoes")
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn not_content(&self) -> Option<i64> {
+                self.item
+                    .attributes
+                    .get("not-content")
+                    .and_then(|value| value.parse().ok())
+            }
+
+            #[getter]
+            fn motion_status(&self) -> Option<String> {
+                self.item.attributes.get("motion_status").cloned()
+            }
+
+            #[getter]
+            fn vote(&self) -> Option<String> {
+                self.item.attributes.get("vote").cloned()
+            }
+
+            #[getter]
+            fn teller(&self) -> Option<String> {
+                self.item.attributes.get("teller").cloned()
+            }
+
+            #[getter]
+            fn proxy(&self) -> Option<String> {
+                self.item.attributes.get("proxy").cloned()
+            }
+
+            #[getter]
+            fn name(&self) -> Option<String> {
+                self.item.attributes.get("name").cloned().or_else(|| {
+                    matches!($python_name, "MSPName" | "RepName")
+                        .then(|| self.item.content.text.clone())
+                })
+            }
+
+            #[getter]
+            fn count(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+                self.item
+                    .children
+                    .iter()
+                    .find(|child| child.tag == "divisioncount")
+                    .map(|child| item_to_python(py, child))
+                    .transpose()
+            }
+
+            #[getter]
+            fn representatives(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+                self.item
+                    .children
+                    .iter()
+                    .filter(|child| {
+                        matches!(
+                            child.tag.as_str(),
+                            "replist" | "mplist" | "msplist" | "mslist" | "mlalist" | "lordlist"
+                        )
+                    })
+                    .map(|child| item_to_python(py, child))
+                    .collect()
+            }
+
+            #[getter]
+            fn rel_motions(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+                self.item
+                    .children
+                    .iter()
+                    .filter(|child| child.tag == "motion")
+                    .map(|child| item_to_python(py, child))
+                    .collect()
+            }
+
             fn model_dump(&self, py: Python<'_>) -> PyResult<PyObject> {
                 let result = PyDict::new_bound(py);
                 result.set_item("@tag", &self.item.tag)?;
@@ -204,6 +380,11 @@ transcript_item_class!(PySource, "Source");
 transcript_item_class!(PyQuestion, "Question");
 transcript_item_class!(PyReply, "Reply");
 transcript_item_class!(PySpeechItem, "SpeechItem");
+transcript_item_class!(PyDivisionCount, "DivisionCount");
+transcript_item_class!(PyMspName, "MSPName");
+transcript_item_class!(PyRepName, "RepName");
+transcript_item_class!(PyRepList, "RepList");
+transcript_item_class!(PyMotion, "Motion");
 
 fn item_to_python(py: Python<'_>, item: &TranscriptItem) -> PyResult<PyObject> {
     macro_rules! create_item {
@@ -222,6 +403,13 @@ fn item_to_python(py: Python<'_>, item: &TranscriptItem) -> PyResult<PyObject> {
         "source" => create_item!(PySource),
         "ques" => create_item!(PyQuestion),
         "reply" => create_item!(PyReply),
+        "divisioncount" => create_item!(PyDivisionCount),
+        "mspname" => create_item!(PyMspName),
+        "repname" | "mpname" | "msname" | "mlaname" | "lord" => create_item!(PyRepName),
+        "replist" | "mplist" | "msplist" | "mslist" | "mlalist" | "lordlist" => {
+            create_item!(PyRepList)
+        }
+        "motion" => create_item!(PyMotion),
         _ => create_item!(PySpeechItem),
     }
 }
@@ -351,6 +539,11 @@ pub fn register_transcript_classes(module: &Bound<'_, PyModule>) -> PyResult<()>
     module.add_class::<PyQuestion>()?;
     module.add_class::<PyReply>()?;
     module.add_class::<PySpeechItem>()?;
+    module.add_class::<PyDivisionCount>()?;
+    module.add_class::<PyMspName>()?;
+    module.add_class::<PyRepName>()?;
+    module.add_class::<PyRepList>()?;
+    module.add_class::<PyMotion>()?;
     module.add_function(wrap_pyfunction!(validate_transcript_folder, module)?)?;
     Ok(())
 }

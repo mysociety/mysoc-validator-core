@@ -4,9 +4,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from mysoc_validator_fast import (
+    Division,
+    DivisionCount,
     MajorHeading,
     MinorHeading,
     Question,
+    RepList,
+    RepName,
     Speech,
     Transcript,
     TranscriptGroup,
@@ -48,6 +52,23 @@ def test_transcript_models_support_upstream_style_construction():
     assert str(heading) == "Heading"
     assert heading.model_dump()["@tag"] == "minor-heading"
     assert question.items == []
+
+
+def test_division_uses_typed_nested_models():
+    transcript = Transcript.model_validate_xml(
+        """<publicwhip><division id="uk.org.publicwhip/debates/2026-01-01.1.1"
+        divdate="2026-01-01" divnumber="1"><divisioncount ayes="1" noes="0"/>
+        <mplist vote="aye"><mpname id="uk.org.publicwhip/member/1" vote="aye">
+        Ada Example</mpname></mplist></division></publicwhip>"""
+    )
+    division = transcript.items[0]
+    assert isinstance(division, Division)
+    assert isinstance(division.count, DivisionCount)
+    assert division.count.ayes == 1
+    assert isinstance(division.representatives[0], RepList)
+    representative = division.representatives[0].items[0]
+    assert isinstance(representative, RepName)
+    assert representative.name.strip() == "Ada Example"
 
 
 def test_transcript_models_reject_invalid_chamber_segment():

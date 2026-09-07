@@ -21,8 +21,76 @@ type SharedPopolo = Arc<RwLock<Popolo>>;
 
 #[gen_stub_pyclass]
 #[pyclass(name = "LordName")]
+#[derive(Clone)]
 pub struct PyLordName {
     inner: popolo_validator::LordName,
+}
+
+#[gen_stub_pyclass]
+#[pyclass(name = "BasicPersonName")]
+#[derive(Clone)]
+pub struct PyBasicPersonName {
+    inner: popolo_validator::BasicPersonName,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl PyBasicPersonName {
+    #[new]
+    #[pyo3(signature = (family_name, *, given_name=None, note="Main"))]
+    fn py_new(family_name: String, given_name: Option<String>, note: &str) -> PyResult<Self> {
+        let note = match note {
+            "Main" => NameType::Main,
+            "Alternate" => NameType::Alternate,
+            _ => return Err(PyValueError::new_err("note must be Main or Alternate")),
+        };
+        Ok(Self {
+            inner: popolo_validator::BasicPersonName {
+                end_date: FuzzyDate::fromisoformat("9999-12-31").unwrap(),
+                family_name,
+                given_name,
+                honorific_prefix: None,
+                note,
+                start_date: FuzzyDate::fromisoformat("0001-01-01").unwrap(),
+            },
+        })
+    }
+
+    fn nice_name(&self) -> String {
+        self.inner.nice_name()
+    }
+}
+
+#[gen_stub_pyclass]
+#[pyclass(name = "AltName")]
+#[derive(Clone)]
+pub struct PyAltName {
+    inner: popolo_validator::AltName,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl PyAltName {
+    #[new]
+    #[pyo3(signature = (name, *, note="Alternate"))]
+    fn py_new(name: String, note: &str) -> PyResult<Self> {
+        if !matches!(note, "Main" | "Alternate") {
+            return Err(PyValueError::new_err("note must be Main or Alternate"));
+        }
+        Ok(Self {
+            inner: popolo_validator::AltName {
+                end_date: FuzzyDate::fromisoformat("9999-12-31").unwrap(),
+                name,
+                note: NameType::Alternate,
+                organization_id: None,
+                start_date: FuzzyDate::fromisoformat("0001-01-01").unwrap(),
+            },
+        })
+    }
+
+    fn nice_name(&self) -> String {
+        self.inner.nice_name()
+    }
 }
 
 #[gen_stub_pymethods]
@@ -722,8 +790,69 @@ impl PyMembership {
         Ok(())
     }
 
+    fn person(&self, py: Python<'_>) -> PyResult<Option<Py<PyPerson>>> {
+        let MembershipState::Handle { shared, .. } = &self.inner else {
+            return Ok(None);
+        };
+        let person_id = self.with_membership(|membership| membership.person_id.clone());
+        PyPersonCollection {
+            shared: shared.clone(),
+        }
+        .__getitem__(py, &person_id)
+        .map(Some)
+    }
+
+    fn post(&self, py: Python<'_>) -> PyResult<Option<Py<PyPost>>> {
+        let MembershipState::Handle { shared, .. } = &self.inner else {
+            return Ok(None);
+        };
+        let Some(post_id) = self.with_membership(|membership| membership.post_id.clone()) else {
+            return Ok(None);
+        };
+        PyPostCollection {
+            shared: shared.clone(),
+        }
+        .__getitem__(py, &post_id)
+        .map(Some)
+    }
+
+    fn organization(&self, py: Python<'_>) -> PyResult<Option<Py<PyOrganization>>> {
+        self.related_organization(py, false)
+    }
+
+    fn on_behalf_of(&self, py: Python<'_>) -> PyResult<Option<Py<PyOrganization>>> {
+        self.related_organization(py, true)
+    }
+
     fn __repr__(&self) -> String {
         format!("<Membership: {}>", self.with_membership(|m| m.id.clone()))
+    }
+}
+
+impl PyMembership {
+    fn related_organization(
+        &self,
+        py: Python<'_>,
+        on_behalf_of: bool,
+    ) -> PyResult<Option<Py<PyOrganization>>> {
+        let MembershipState::Handle { shared, .. } = &self.inner else {
+            return Ok(None);
+        };
+        let organization_id = self.with_membership(|membership| {
+            if on_behalf_of {
+                membership.on_behalf_of_id.clone()
+            } else {
+                membership.organization_id.clone()
+            }
+        });
+        let Some(organization_id) = organization_id else {
+            return Ok(None);
+        };
+        PyOrganizationCollection {
+            shared: shared.clone(),
+        }
+        .__getitem__(py, &organization_id)
+        .map(Some)
     }
 }
 
@@ -831,6 +960,66 @@ impl PyPerson {
             }
         }
     }
+
+    fn change_party_data(
+        &self,
+        new_party_id: String,
+        change_date: NaiveDate,
+        change_reason: MembershipReason,
+        source: Option<String>,
+    ) -> PyResult<()> {
+        let PersonState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err("Person has no parent Popolo object"));
+        };
+        let mut guard = shared.write().unwrap();
+        let last_index = guard
+            .memberships
+            .root
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| match item {
+                MembershipType::Membership(membership) if membership.person_id == *id => {
+                    Some((membership.start_date.earliest_date, index))
+                }
+                _ => None,
+            })
+            .max_by_key(|(start_date, _)| *start_date)
+            .map(|(_, index)| index)
+            .ok_or_else(|| PyValueError::new_err("Person has no memberships"))?;
+        let MembershipType::Membership(last) = &mut guard.memberships.root[last_index] else {
+            unreachable!()
+        };
+        last.end_date = FuzzyDate::new(change_date, change_date);
+        last.end_reason = Some(change_reason.clone());
+        let mut new_membership = last.clone();
+        let next_id = guard
+            .memberships
+            .root
+            .iter()
+            .filter_map(|item| match item {
+                MembershipType::Membership(membership) => membership
+                    .id
+                    .strip_prefix("uk.org.publicwhip/member/")
+                    .and_then(|value| value.parse::<u32>().ok()),
+                MembershipType::MembershipRedirect(_) => None,
+            })
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let start_date = change_date + Duration::days(1);
+        new_membership.id = format!("uk.org.publicwhip/member/{next_id}");
+        new_membership.start_date = FuzzyDate::new(start_date, start_date);
+        new_membership.end_date = FuzzyDate::fromisoformat("9999-12-31").unwrap();
+        new_membership.start_reason = Some(change_reason);
+        new_membership.end_reason = None;
+        new_membership.on_behalf_of_id = Some(new_party_id);
+        new_membership.source = source;
+        guard
+            .memberships
+            .push(MembershipType::Membership(new_membership));
+        guard.memberships.set_lookup();
+        Ok(())
+    }
 }
 
 #[gen_stub_pymethods]
@@ -901,6 +1090,71 @@ impl PyPerson {
         self.with_person(|p| p.get_identifier(scheme))
     }
 
+    #[pyo3(signature = (scheme, identifier, *, if_missing=false))]
+    fn add_identifer(&mut self, scheme: String, identifier: String, if_missing: bool) -> bool {
+        if if_missing
+            && self.with_person(|person| {
+                person.get_identifier(&scheme).as_deref() == Some(identifier.as_str())
+            })
+        {
+            return false;
+        }
+        self.with_person_mut(|person| {
+            let identifiers = person.identifiers.get_or_insert_with(Vec::new);
+            identifiers.retain(|existing| existing.scheme != scheme);
+            identifiers.push(popolo_validator::SimpleIdentifer {
+                scheme,
+                identifier: popolo_validator::Identifier::String(identifier),
+            });
+        });
+        true
+    }
+
+    #[pyo3(signature = (include_original_name=true))]
+    fn all_name_variants(&self, include_original_name: bool) -> Vec<String> {
+        self.with_person(|person| {
+            let mut variants = Vec::new();
+            for name in person.other_names.as_deref().unwrap_or_default() {
+                for variant in name.name_variants(include_original_name) {
+                    if !variants.contains(&variant) {
+                        variants.push(variant);
+                    }
+                }
+            }
+            variants
+        })
+    }
+
+    fn get_main_name(&self, py: Python<'_>, date: &Bound<'_, PyAny>) -> PyResult<Option<PyObject>> {
+        let date = py_to_naive_date(date)?;
+        let name = self.with_person(|person| {
+            person
+                .other_names
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .find(|name| {
+                    let (start, end) = name.date_range();
+                    name.note_str() == "Main"
+                        && start.earliest_date <= date
+                        && date <= end.latest_date
+                })
+                .cloned()
+        });
+        name.map(|name| match name {
+            popolo_validator::NameOptions::BasicPersonName(inner) => {
+                Py::new(py, PyBasicPersonName { inner }).map(|value| value.into_py(py))
+            }
+            popolo_validator::NameOptions::LordName(inner) => {
+                Py::new(py, PyLordName { inner }).map(|value| value.into_py(py))
+            }
+            popolo_validator::NameOptions::AltName(inner) => {
+                Py::new(py, PyAltName { inner }).map(|value| value.into_py(py))
+            }
+        })
+        .transpose()
+    }
+
     fn memberships(&self, py: Python<'_>) -> PyResult<Vec<Py<PyMembership>>> {
         let (ids, shared) = match &self.inner {
             PersonState::Standalone(_) => {
@@ -919,6 +1173,258 @@ impl PyPerson {
                 Py::new(py, m)
             })
             .collect()
+    }
+
+    fn reduced_id(&self) -> String {
+        self.get_id()
+            .rsplit('/')
+            .next()
+            .unwrap_or(self.get_id())
+            .to_string()
+    }
+
+    #[pyo3(signature = (date, *, chamber))]
+    fn membership_on_date(
+        &self,
+        py: Python<'_>,
+        date: &Bound<'_, PyAny>,
+        chamber: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Py<PyMembership>>> {
+        let date = py_to_naive_date(date)?;
+        let chamber = chamber.str()?.to_str()?.to_string();
+        let PersonState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err("Person has no parent Popolo"));
+        };
+        let membership_id = {
+            let guard = shared.read().unwrap();
+            guard.memberships.root.iter().find_map(|item| {
+                let MembershipType::Membership(membership) = item else {
+                    return None;
+                };
+                let post_matches = membership
+                    .post_id
+                    .as_ref()
+                    .and_then(|post_id| guard.posts.get(post_id))
+                    .is_some_and(|post| post.organization_id == chamber);
+                (membership.person_id == *id
+                    && post_matches
+                    && membership.start_date.earliest_date <= date
+                    && date <= membership.end_date.latest_date)
+                    .then(|| membership.id.clone())
+            })
+        };
+        membership_id
+            .map(|membership_id| {
+                Py::new(py, PyMembership::make_handle(shared.clone(), membership_id))
+            })
+            .transpose()
+    }
+
+    fn latest_membership(
+        &self,
+        py: Python<'_>,
+        chamber: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Py<PyMembership>>> {
+        let chamber = chamber.str()?.to_str()?.to_string();
+        let PersonState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err("Person has no parent Popolo"));
+        };
+        let membership_id = {
+            let guard = shared.read().unwrap();
+            guard
+                .memberships
+                .root
+                .iter()
+                .filter_map(|item| match item {
+                    MembershipType::Membership(membership)
+                        if membership.person_id == *id
+                            && membership
+                                .post_id
+                                .as_ref()
+                                .and_then(|post_id| guard.posts.get(post_id))
+                                .is_some_and(|post| post.organization_id == chamber) =>
+                    {
+                        Some((membership.start_date.earliest_date, membership.id.clone()))
+                    }
+                    _ => None,
+                })
+                .max_by_key(|(start_date, _)| *start_date)
+                .map(|(_, membership_id)| membership_id)
+        };
+        membership_id
+            .map(|membership_id| {
+                Py::new(py, PyMembership::make_handle(shared.clone(), membership_id))
+            })
+            .transpose()
+    }
+
+    #[pyo3(signature = (organization_id, role, start_date, end_date=None,
+        post_id="", on_behalf_of_id="", start_reason=None, end_reason=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn add_membership(
+        &self,
+        organization_id: &Bound<'_, PyAny>,
+        role: String,
+        start_date: &Bound<'_, PyAny>,
+        end_date: Option<&Bound<'_, PyAny>>,
+        post_id: &str,
+        on_behalf_of_id: &str,
+        start_reason: Option<&Bound<'_, PyAny>>,
+        end_reason: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let PersonState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err("Person has no parent Popolo object"));
+        };
+        let organization_id = organization_id.str()?.to_str()?.to_string();
+        let mut guard = shared.write().unwrap();
+        let next_id = guard
+            .memberships
+            .root
+            .iter()
+            .filter_map(|item| match item {
+                MembershipType::Membership(membership) => membership
+                    .id
+                    .strip_prefix("uk.org.publicwhip/member/")
+                    .and_then(|value| value.parse::<u32>().ok()),
+                MembershipType::MembershipRedirect(_) => None,
+            })
+            .max()
+            .unwrap_or(0)
+            + 1;
+        guard
+            .memberships
+            .push(MembershipType::Membership(popolo_validator::Membership {
+                id: format!("uk.org.publicwhip/member/{next_id}"),
+                person_id: id.clone(),
+                organization_id: Some(organization_id),
+                role: Some(role),
+                start_date: py_to_fuzzy_date(start_date)?,
+                end_date: end_date
+                    .map(py_to_fuzzy_date)
+                    .transpose()?
+                    .unwrap_or_else(|| FuzzyDate::fromisoformat("9999-12-31").unwrap()),
+                post_id: (!post_id.is_empty()).then(|| post_id.to_string()),
+                on_behalf_of_id: (!on_behalf_of_id.is_empty()).then(|| on_behalf_of_id.to_string()),
+                start_reason: start_reason.map(py_to_membership_reason).transpose()?,
+                end_reason: end_reason.map(py_to_membership_reason).transpose()?,
+                extra: None,
+                identifiers: None,
+                label: None,
+                name: None,
+                reason: None,
+                source: None,
+            }));
+        guard.memberships.set_lookup();
+        Ok(())
+    }
+
+    fn end_membership_with_reason(
+        &self,
+        end_date: &Bound<'_, PyAny>,
+        end_reason: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let PersonState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err("Person has no parent Popolo object"));
+        };
+        let end_date = py_to_fuzzy_date(end_date)?;
+        let end_reason = py_to_membership_reason(end_reason)?;
+        let mut guard = shared.write().unwrap();
+        let membership = guard
+            .memberships
+            .root
+            .iter_mut()
+            .filter_map(|item| match item {
+                MembershipType::Membership(membership) if membership.person_id == *id => {
+                    Some(membership)
+                }
+                _ => None,
+            })
+            .max_by_key(|membership| membership.start_date.earliest_date)
+            .ok_or_else(|| PyValueError::new_err("Person has no memberships"))?;
+        membership.end_date = end_date;
+        membership.end_reason = Some(end_reason);
+        Ok(())
+    }
+
+    #[pyo3(signature = (new_party, change_date=None, change_reason=None, source_url=None))]
+    fn change_party(
+        &self,
+        new_party: PyRef<'_, PyOrganization>,
+        change_date: Option<&Bound<'_, PyAny>>,
+        change_reason: Option<&Bound<'_, PyAny>>,
+        source_url: Option<String>,
+    ) -> PyResult<()> {
+        let change_date = match change_date {
+            Some(value) => py_to_naive_date(value)?,
+            None => chrono::Local::now().date_naive(),
+        };
+        let reason = match change_reason {
+            Some(value) => py_to_membership_reason(value)?,
+            None => MembershipReason::ChangedParty,
+        };
+        self.change_party_data(
+            new_party.get_id().to_string(),
+            change_date,
+            reason,
+            source_url,
+        )
+    }
+
+    #[pyo3(signature = (change_date=None, source_url=None))]
+    fn remove_whip(
+        &self,
+        change_date: Option<&Bound<'_, PyAny>>,
+        source_url: Option<String>,
+    ) -> PyResult<()> {
+        let change_date = match change_date {
+            Some(value) => py_to_naive_date(value)?,
+            None => chrono::Local::now().date_naive(),
+        };
+        self.change_party_data(
+            "independent".to_string(),
+            change_date,
+            MembershipReason::WhipRemoved,
+            source_url,
+        )
+    }
+
+    #[pyo3(signature = (change_date=None, source_url=None))]
+    fn restore_whip(
+        &self,
+        change_date: Option<&Bound<'_, PyAny>>,
+        source_url: Option<String>,
+    ) -> PyResult<()> {
+        let change_date = match change_date {
+            Some(value) => py_to_naive_date(value)?,
+            None => chrono::Local::now().date_naive(),
+        };
+        let PersonState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err("Person has no parent Popolo object"));
+        };
+        let previous_party = {
+            let guard = shared.read().unwrap();
+            guard
+                .memberships
+                .root
+                .iter()
+                .rev()
+                .find_map(|item| match item {
+                    MembershipType::Membership(membership)
+                        if membership.person_id == *id
+                            && membership.on_behalf_of_id.as_deref() != Some("independent") =>
+                    {
+                        membership.on_behalf_of_id.clone()
+                    }
+                    _ => None,
+                })
+        }
+        .ok_or_else(|| PyValueError::new_err("No previous party found"))?;
+        self.change_party_data(
+            previous_party,
+            change_date,
+            MembershipReason::WhipRestored,
+            source_url,
+        )
     }
 
     #[pyo3(signature = (*, given_name=None, family_name=None, one_name=None,
@@ -1230,6 +1736,50 @@ impl PyOrganization {
         self.get_id()
     }
 
+    fn delete(&self) -> PyResult<()> {
+        let OrganizationState::Handle { shared, id } = &self.inner else {
+            return Err(PyValueError::new_err(
+                "Cannot delete an Organization with no parent Popolo",
+            ));
+        };
+        let mut guard = shared.write().unwrap();
+        let index = guard
+            .organizations
+            .id_lookup
+            .get(id)
+            .copied()
+            .ok_or_else(|| PyKeyError::new_err(id.clone()))?;
+        guard.organizations.root.remove(index);
+        guard.organizations.set_lookup();
+        Ok(())
+    }
+
+    fn close_open_memberships<'py>(
+        slf: PyRef<'py, Self>,
+        end_date: &Bound<'_, PyAny>,
+        end_reason: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRef<'py, Self>> {
+        let OrganizationState::Handle { shared, id } = &slf.inner else {
+            return Err(PyValueError::new_err("Organization has no parent Popolo"));
+        };
+        let end_date = py_to_fuzzy_date(end_date)?;
+        let end_reason = py_to_membership_reason(end_reason)?;
+        let mut guard = shared.write().unwrap();
+        for item in &mut guard.memberships.root {
+            if let MembershipType::Membership(membership) = item {
+                if membership.organization_id.as_deref() == Some(id)
+                    && membership.end_date.latest_date
+                        == NaiveDate::from_ymd_opt(9999, 12, 31).unwrap()
+                {
+                    membership.end_date = end_date.clone();
+                    membership.end_reason = Some(end_reason.clone());
+                }
+            }
+        }
+        drop(guard);
+        Ok(slf)
+    }
+
     #[getter]
     fn classification(&self) -> Option<String> {
         self.with_org(|o| {
@@ -1532,6 +2082,17 @@ impl PyPost {
                 }
             }
         }
+    }
+
+    fn organization(&self, py: Python<'_>) -> PyResult<Py<PyOrganization>> {
+        let PostState::Handle { shared, .. } = &self.inner else {
+            return Err(PyValueError::new_err("Post has no parent Popolo"));
+        };
+        let organization_id = self.with_post(|post| post.organization_id.clone());
+        PyOrganizationCollection {
+            shared: shared.clone(),
+        }
+        .__getitem__(py, &organization_id)
     }
 
     fn __repr__(&self) -> String {
@@ -1884,6 +2445,68 @@ impl PyPersonCollection {
             .collect()
     }
 
+    fn merge_people(&self, target_id: &str, source_id: &str) -> PyResult<()> {
+        if target_id == source_id {
+            return Err(PyValueError::new_err("Cannot merge a person into itself"));
+        }
+        let mut guard = self.shared.write().unwrap();
+        let target_index = guard
+            .persons
+            .id_lookup
+            .get(target_id)
+            .copied()
+            .ok_or_else(|| PyKeyError::new_err(target_id.to_string()))?;
+        let source_index = guard
+            .persons
+            .id_lookup
+            .get(source_id)
+            .copied()
+            .ok_or_else(|| PyKeyError::new_err(source_id.to_string()))?;
+        let source = match &guard.persons.root[source_index] {
+            PersonType::Person(person) => person.clone(),
+            PersonType::PersonRedirect(_) => {
+                return Err(PyValueError::new_err("Source person is already a redirect"));
+            }
+        };
+        let target = match &mut guard.persons.root[target_index] {
+            PersonType::Person(person) => person,
+            PersonType::PersonRedirect(_) => {
+                return Err(PyValueError::new_err("Target person is a redirect"));
+            }
+        };
+        if let Some(source_identifiers) = source.identifiers {
+            let target_identifiers = target.identifiers.get_or_insert_with(Vec::new);
+            for identifier in source_identifiers {
+                if !target_identifiers.iter().any(|existing| {
+                    existing.scheme == identifier.scheme
+                        && existing.identifier.as_str() == identifier.identifier.as_str()
+                }) {
+                    target_identifiers.push(identifier);
+                }
+            }
+        }
+        if let Some(source_names) = source.other_names {
+            target
+                .other_names
+                .get_or_insert_with(Vec::new)
+                .extend(source_names);
+        }
+        for membership in &mut guard.memberships.root {
+            if let MembershipType::Membership(membership) = membership {
+                if membership.person_id == source_id {
+                    membership.person_id = target_id.to_string();
+                }
+            }
+        }
+        guard.persons.root[source_index] =
+            PersonType::PersonRedirect(popolo_validator::PersonRedirect {
+                id: source_id.to_string(),
+                redirect: target_id.to_string(),
+            });
+        guard.persons.set_lookup();
+        Ok(())
+    }
+
     fn from_identifier(
         &self,
         py: Python<'_>,
@@ -2019,6 +2642,29 @@ impl PyOrganizationCollection {
             .organizations
             .id_lookup
             .contains_key(id)
+    }
+
+    fn get(&self, py: Python<'_>, id: &str) -> PyResult<Option<Py<PyOrganization>>> {
+        if self.__contains__(id) {
+            self.__getitem__(py, id).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn pop(&self, id: &str) -> PyResult<PyOrganization> {
+        let mut guard = self.shared.write().unwrap();
+        let index = guard
+            .organizations
+            .id_lookup
+            .get(id)
+            .copied()
+            .ok_or_else(|| PyKeyError::new_err(id.to_string()))?;
+        let organization = guard.organizations.root.remove(index);
+        guard.organizations.set_lookup();
+        Ok(PyOrganization {
+            inner: OrganizationState::Standalone(organization),
+        })
     }
 
     fn append(&self, _py: Python<'_>, item: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -2288,6 +2934,8 @@ impl PyPopolo {
 fn _mysoc_validator_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<FuzzyDate>()?;
     m.add_class::<PyLordName>()?;
+    m.add_class::<PyBasicPersonName>()?;
+    m.add_class::<PyAltName>()?;
     m.add_class::<PyExtra>()?;
     m.add_class::<PyPopolo>()?;
     m.add_class::<PyMembership>()?;

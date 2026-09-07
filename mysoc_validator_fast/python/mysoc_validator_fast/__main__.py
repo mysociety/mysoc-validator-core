@@ -6,12 +6,14 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated, Optional
 from urllib.parse import urlparse
+from glob import glob as expand_glob
 
 import rich
 import typer
 
 from .consts import MembershipReason
 from .popolo import Membership, Popolo
+from .interests import RegmemRegister
 from .transcripts import Transcript, TranscriptGroup
 
 app = typer.Typer()
@@ -19,10 +21,12 @@ popolo_app = typer.Typer(help="Commands for Popolo files")
 name_app = typer.Typer(help="Commands for name modifications in Popolo files")
 party_app = typer.Typer(help="Commands for party modifications in Popolo files")
 transcript_app = typer.Typer(help="Commands for Transcript files")
+interests_app = typer.Typer(help="Commands for Register of Interests files")
 popolo_app.add_typer(name_app, name="name")
 popolo_app.add_typer(party_app, name="party")
 app.add_typer(popolo_app, name="popolo")
 app.add_typer(transcript_app, name="transcript")
+app.add_typer(interests_app, name="interests")
 
 OptionalDate = Annotated[Optional[date], typer.Option(parser=date.fromisoformat)]
 
@@ -381,11 +385,66 @@ def validate_popolo_cmd(
         validate_popolo_file(process_path(loc), format_file=format_file)
 
 
+def validate_interests_json(file: Path, quiet_success: bool = False) -> bool:
+    """
+    Validate a Rust-backed register-of-interests JSON file.
+    """
+
+    try:
+        RegmemRegister.from_path(file)
+    except Exception as error:
+        typer.echo(f"Error: {error}")
+        rich.print(f"[red]Invalid Interests file: {file}[/red]")
+        return False
+    if not quiet_success:
+        rich.print(f"[green]Valid Interests file: {file}[/green]")
+    return True
+
+
+@interests_app.command(name="validate")
+def validate_interests_cmd(file: str, glob: bool = False) -> None:
+    """
+    Validate one JSON register or all JSON registers in a directory or glob.
+    """
+
+    path = Path(file)
+    if path.is_dir():
+        paths = sorted(path.glob("*.json"))
+    elif glob or any(character in file for character in "*?["):
+        paths = sorted(Path(match) for match in expand_glob(file))
+    else:
+        paths = [path]
+    if not paths:
+        typer.echo(f"No interests files matched: {file}")
+        raise typer.Exit(code=1)
+    invalid = [path for path in paths if not validate_interests_json(path, True)]
+    typer.echo(
+        f"Validated {len(paths)} interests files: "
+        f"{len(paths) - len(invalid)} valid, {len(invalid)} invalid."
+    )
+    if invalid:
+        raise typer.Exit(code=1)
+
+
 @transcript_app.command(name="validate")
 def validate_transcript_cmd(file: str, glob: bool = False) -> None:
     """
     Validate one transcript or every transcript matching a glob pattern.
     """
+
+    path = Path(file)
+    if path.is_dir():
+        group = TranscriptGroup.from_folder(path)
+        for result in group.invalid:
+            typer.echo(f"Invalid Transcript file: {result.path}")
+            typer.echo(f"Error: {result.error}")
+        typer.echo(
+            f"Validated {len(group)} transcript files: "
+            f"{len(group.valid)} valid, {len(group.invalid)} invalid."
+        )
+        if group.invalid:
+            raise typer.Exit(code=1)
+        return
 
     use_group = glob or any(character in file for character in "*?[")
     if use_group:
@@ -404,7 +463,6 @@ def validate_transcript_cmd(file: str, glob: bool = False) -> None:
             raise typer.Exit(code=1)
         return
 
-    path = Path(file)
     try:
         Transcript.from_xml_path(path)
     except Exception as error:
