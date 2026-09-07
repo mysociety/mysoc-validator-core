@@ -1,4 +1,11 @@
-"""Typed models for project-specific Popolo ``extra`` data."""
+"""
+Subclassable Pydantic schemas for project-specific Popolo ``extra`` data.
+
+Rust stores the underlying JSON. These Python models validate custom fields and
+provide typed snapshots through ``record.get_extra_as(CustomExtra)``. Mutating a
+snapshot does not update the record; use ``record.set_extra(key, value)`` to save
+changes. The record's ``extra`` proxy supports live top-level assignments.
+"""
 
 from __future__ import annotations
 
@@ -35,9 +42,7 @@ class LocalisedLabelsExtra(Extra, Generic[LocalisedField]):
 
 
 MembershipExtra = LocalisedLabelsExtra[Literal["label", "role"]]
-OrganizationExtra = LocalisedLabelsExtra[
-    Literal["name", "abstract", "description"]
-]
+OrganizationExtra = LocalisedLabelsExtra[Literal["name", "abstract", "description"]]
 PersonExtra = LocalisedLabelsExtra[Literal["biography", "summary"]]
 AreaExtra = LocalisedLabelsExtra[Literal["name"]]
 PostExtra = LocalisedLabelsExtra[Literal["label", "role"]]
