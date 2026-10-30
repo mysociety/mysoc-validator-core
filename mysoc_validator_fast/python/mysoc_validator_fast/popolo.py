@@ -25,6 +25,10 @@ from .dates import ApproxDate, FixedDate
 # Import from the compiled Rust extension
 # ---------------------------------------------------------------------------
 from ._mysoc_validator_fast import (  # type: ignore[import]
+    AltName as _RustAltName,
+    Area as _RustArea,
+    BasicPersonName as _RustBasicPersonName,
+    LordName as _RustLordName,
     Membership as _RustMembership,
     MembershipCollection as _RustMembershipCollection,
     MembershipRedirect as _RustMembershipRedirect,
@@ -41,6 +45,10 @@ from ._mysoc_validator_fast import (  # type: ignore[import]
 # Re-export Rust types under their expected names.
 # Users import Membership, Person, etc. from this module.
 Membership = _RustMembership
+AltName = _RustAltName
+Area = _RustArea
+BasicPersonName = _RustBasicPersonName
+LordName = _RustLordName
 MembershipRedirect = _RustMembershipRedirect
 Organization = _RustOrganization
 Person = _RustPerson
@@ -68,6 +76,11 @@ class Popolo(_RustPopolo):
     # Make Chamber accessible as Popolo.Chamber.COMMONS etc.
     Chamber: ClassVar[Type[Chamber]] = Chamber
     IdentifierScheme: ClassVar[Type[IdentifierScheme]] = IdentifierScheme
+
+    @classmethod
+    def model_validate(cls, value: object) -> "Popolo":
+        """Validate a Python mapping using the Rust Popolo model."""
+        return cls.model_validate_json(json.dumps(value))
 
     # ------------------------------------------------------------------
     # Construction

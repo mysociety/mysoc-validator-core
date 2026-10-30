@@ -2,7 +2,7 @@
 
 Rust workspace providing fast validation logic and PyO3 bindings for mySociety's Python validator libraries.
 
-The repository is a Cargo workspace with three crates: two pure-Rust libraries and one PyO3 bridge that compiles into the `mysoc_validator_fast` Python package.
+The Cargo workspace has five crates: three domain libraries, a shared date library with optional Python support, and a PyO3 bridge that compiles into the `mysoc_validator_fast` Python package. Python 3.11 or newer is required.
 
 ## Crates
 
@@ -19,7 +19,7 @@ A date type that handles the partial-date formats common in political data — w
 | `"2010-06-15"` | Full date | |
 | `"2010-06-01/2010-06-30"` | Explicit range | custom date span |
 
-Equality and ordering comparisons are range-aware: two `FuzzyDate` values are equal if either's range overlaps the other's. The crate exposes a `FuzzyDate` PyO3 class (comparable against Python `datetime.date` objects and ISO strings) and implements `serde` serialisation so it can be embedded in JSON structs. It also supports `FuzzyDate + timedelta`, returning a plain Python `date` from the earliest bound.
+Python equality is range-aware: two `FuzzyDate` values compare equal when their intervals overlap, and a Python `date` matches an interval containing it. Python ordering treats overlapping intervals as neither less nor greater; strings compare against the compact ISO spelling. In Rust, equality compares identical bounds and ordering uses `(earliest_date, latest_date)`. Domain code uses explicit `overlaps`, `contains`, `is_before` and `is_after` predicates for fuzzy matching. The crate exposes a `FuzzyDate` PyO3 class (comparable against Python `datetime.date` objects and ISO strings) and implements `serde` serialisation so it can be embedded in JSON structs. It also supports `FuzzyDate + timedelta`, returning a plain Python `date` from the earliest bound.
 
 ### `popolo_validator`
 
@@ -46,22 +46,42 @@ The crate also exposes pure-Rust query methods used by the Python bridge:
 
 The crate also has a `main.rs` binary entry point, making `popolo_validator` a standalone CLI tool for validating and formatting Popolo files.
 
+### `regmem_validator`
+
+Pure Rust register-of-interests models, custom detail-value serialization and
+cross-record validation. `details.rs` owns tagged values and groups; `entries.rs`
+owns entry content and annotations; `register.rs` owns the hierarchy and index
+locations. The Python bridge supports live entry/detail-group edits, while
+individual details, annotations and summaries are detached values.
+
+### `transcript_validator`
+
+Pure Rust transcript XML parsing and validation. `xml.rs` extracts an owned tree
+from a parsing copy; `files.rs` discovers and validates folders. The original XML
+is retained for round-tripping. Python item wrappers own copies, so editing an
+item does not rewrite the transcript's stored XML.
+
 ### `mysoc_validator_fast`
 
-PyO3 bridge that compiles `fuzzy_date` and `popolo_validator` into the `mysoc_validator_fast` Python package — a drop-in replacement for the `mysoc_validator` Popolo classes, without Pydantic.
+PyO3 bridge that wraps all four libraries into the `mysoc_validator_fast` Python package — a drop-in replacement for the `mysoc_validator` Popolo classes, with Rust-backed core models.
 
-**Architecture:** All data lives in a single Rust `Arc<RwLock<Popolo>>`. Python objects are thin handles that read and write through to Rust on demand; there are no Python-side copies of the dataset. This means:
+The Python package retains Pydantic for subclassable, typed project-specific
+extras. Rust stores their JSON; `record.get_extra_as(CustomExtra)` validates a
+snapshot against a caller-defined schema. Write changes through `set_extra` or
+the live `extra` proxy; editing a typed snapshot does not mutate the dataset.
+
+**Popolo architecture:** Dataset data lives in a single Rust `Arc<RwLock<Popolo>>`. Collection lookups return thin handles that read and write through to Rust on demand. Standalone constructors own independent values, and appending copies those values into the dataset. Names and date getters return detached copies. This means:
 
 - Loading is fast: Rust parses and validates JSON, then Python gets lightweight handles.
 - Mutation goes back to Rust: setting `membership.end_date = new_date` updates the Rust struct.
 - Name and identifier lookups run entirely in Rust.
 
-The Python package (in `popolo_validator_python/python/`) layers on top of the extension to provide:
+The Python package (in `mysoc_validator_fast/python/`) layers on top of the extension to provide:
 
 - `Popolo.from_parlparse()`, `from_path()`, `from_url()`, `to_json_str()`, `to_path()` — I/O helpers matching the `mysoc_validator` API.
 - `Chamber`, `MembershipReason`, `IdentifierScheme` — Python `StrEnum` constants.
 - `FixedDate`, `ApproxDate` — pure-Python date utilities matching `mysoc_validator.models.dates`.
-- Full type stubs (`_popolo_validator_python.pyi`) describing every Rust-backed class and method.
+- Full type stubs (`_mysoc_validator_fast.pyi`) describing every Rust-backed class and method.
 
 **Key Python types** (all backed by Rust data):
 
@@ -80,7 +100,7 @@ The Python package (in `popolo_validator_python/python/`) layers on top of the e
 ### Initial setup
 
 ```bash
-script/setup   # installs uv, Python 3.9, and syncs the Python environment
+script/setup   # installs uv and syncs the Python environment
 ```
 
 ### Build and install in development mode
@@ -92,11 +112,19 @@ uv run maturin develop -m mysoc_validator_fast/Cargo.toml
 ### Run the tests
 
 ```bash
-# FuzzyDate unit tests (no network required)
+# Rust domain tests and extension compile check
+cargo test --workspace --exclude mysoc_validator_fast --locked
+cargo check -p mysoc_validator_fast --locked
+cargo fmt --all --check
+
+# FuzzyDate Python tests (build the extension first)
 uv run pytest mysoc_validator_fast/tests/test_dates.py -v
 
-# Full Popolo integration tests (requires internet for parlparse fixture)
-uv run pytest mysoc_validator_fast/tests/test_popolo.py -v
+# Full Python suite (requires internet for parlparse fixtures)
+uv run pytest mysoc_validator_fast/tests -q
+
+# Tests using local fixtures
+uv run pytest mysoc_validator_fast/tests --ignore=mysoc_validator_fast/tests/test_popolo.py -q
 ```
 
 ### Build a release wheel
@@ -115,17 +143,82 @@ target/release/popolo_validator data/people.json
 
 ## Workspace structure
 
-```
+```text
 mysoc-validator-core/
-├── fuzzy_date/                  # Pure Rust: partial-date type (PyO3 optional via "python" feature)
-├── popolo_validator/            # Pure Rust: Popolo domain logic, no PyO3
-└── mysoc_validator_fast/        # PyO3 bridge: full Popolo Python API
-    ├── src/lib.rs               # Rust PyO3 wrappers (Arc<RwLock<>> handle pattern)
-    └── python/
-        └── mysoc_validator_fast/
-            ├── __init__.py
-            ├── popolo.py        # Thin Python I/O helpers + Popolo subclass
-            ├── dates.py         # FixedDate, FuzzyDate/ApproxDate alias
-            ├── consts.py        # Chamber, MembershipReason, IdentifierScheme
-            └── _mysoc_validator_fast.pyi  # Type stubs for the Rust extension
+├── fuzzy_date/src/
+│   ├── lib.rs                  # Interval values, serde and exact Rust comparison
+│   └── python.rs               # Feature-gated Python fuzzy comparison
+├── popolo_validator/src/
+│   ├── lib.rs                  # Public exports and load/dump orchestration
+│   ├── models.rs, names.rs     # Records, name variants and custom serde
+│   ├── collections.rs         # Ordered records and ID index maintenance
+│   ├── validation.rs          # Dataset and insertion validation policies
+│   ├── queries.rs             # Name, identifier and redirect resolution
+│   └── dates.rs               # Open date bounds; empty/null values normalize to defaults
+├── regmem_validator/src/
+│   └── lib.rs, enums.rs, details.rs, entries.rs, register.rs
+├── transcript_validator/src/
+│   └── lib.rs, xml.rs, files.rs
+└── mysoc_validator_fast/
+    ├── src/
+    │   ├── lib.rs              # Python module registration and Rust re-exports
+    │   ├── conversions.rs      # Shared Python/JSON boundary helpers
+    │   ├── popolo/             # One module per entity, plus conversions/macros
+    │   ├── interests/          # Values, entries and register hierarchy
+    │   ├── transcripts/        # Item classes, top-level wrapper and file adapters
+    │   └── bin/stub_gen.rs     # Generates annotated API declarations for review
+    ├── python/mysoc_validator_fast/
+    │   ├── popolo.py, interests.py, transcripts.py
+    │   ├── dates.py, consts.py, popolo_extras.py
+    │   └── _mysoc_validator_fast.pyi
+    └── tests/
 ```
+
+## Reading the implementation
+
+Start with the Python module for the public API, then follow the corresponding
+bridge module into its domain crate. For example, `memberships.append(...)`
+reaches `src/popolo/membership.rs`, which calls
+`Popolo::validate_membership_insertion` in `popolo_validator/src/validation.rs`.
+The model's JSON fields live in `models.rs`, index maintenance in `collections.rs`,
+and the policy regressions in `popolo_validator/tests/comparison_and_collections.rs`
+and `mysoc_validator_fast/tests/test_refactoring_contracts.py`.
+
+Rust module documentation explains ownership and borrowing at these boundaries.
+`Arc::clone` shares a dataset, while cloning an owned domain model copies its data.
+Access closures keep record borrows within a lock guard's lifetime. Python
+callbacks run after the dataset guard is released. PyO3 separately checks borrows
+of each Python wrapper: a callback that needs to mutate a record can use another
+handle to it, but mutating the same wrapper during an active read raises a borrow
+error. ID-based Popolo handles and index-path
+interests handles have different invalidation rules; their modules document those
+rules. Removing an organization makes existing handles raise `KeyError` on data
+access; person handles follow redirects after merges.
+
+Parsing and validation are separate. Direct serde construction builds records and
+indexes but does not run Popolo's cross-record checks. Dataset overlap validation
+retains its historical adjacent-pair and approximate-date exclusions; insertion
+validation conservatively checks possible overlaps. These policies are explicit
+and are not inferred from Rust date equality.
+
+The checked-in type stub includes hand-maintained transcript and compatibility
+APIs alongside annotated bindings. Run the generator only with a saved copy and
+review its diff; do not replace the complete stub blindly:
+
+```bash
+cargo run --manifest-path mysoc_validator_fast/Cargo.toml --bin stub_gen
+cargo doc --workspace --no-deps
+```
+
+Popolo enum strings are defined by Strum casing rules and explicit variant
+spellings. Serde uses the same `Display`/`FromStr` implementations, so JSON and
+Python conversions share one vocabulary. Optional JSON fields use
+`serde_with::skip_serializing_none`; date and collection omission rules remain
+field-specific. Empty or null start/end dates normalize to open bounds, matching
+upstream; `0001-01-02` is an ordinary date.
+
+Register language defaults to English when omitted. Explicit `null` permits
+per-person languages and is serialized as `null` to preserve that meaning on
+reload. Python constructors accept the same language values and reject unknown
+spellings. Private Rust unit tests live in separate child-module files; public
+API regressions live in each crate's `tests/` directory.
