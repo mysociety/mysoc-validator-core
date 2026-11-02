@@ -4,6 +4,8 @@ Rust workspace providing fast validation logic and PyO3 bindings for mySociety's
 
 The Cargo workspace has five crates: three domain libraries, a shared date library with optional Python support, and a PyO3 bridge that compiles into the `mysoc_validator_fast` Python package. Python 3.11 or newer is required.
 
+`mysoc-validator-fast` currently shadows the Python API of [mysoc-validator](https://github.com/mysociety/mysoc-validator) **1.5**. Its own release version is tracked separately from the upstream compatibility target.
+
 ## Crates
 
 ### `fuzzy_date`
