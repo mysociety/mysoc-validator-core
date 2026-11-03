@@ -35,7 +35,6 @@ macro_rules! standalone_handle_methods {
 /// Generate a `String` getter for `$field` using `$accessor`.
 macro_rules! str_getter {
     ($struct:ty, $accessor:ident, $field:ident $(, $fallible:tt)?) => {
-        #[pyo3_stub_gen::derive::gen_stub_pymethods]
         #[pymethods]
         impl $struct {
             #[getter]
@@ -49,7 +48,6 @@ macro_rules! str_getter {
 /// Generate an `Option<String>` getter for `$field` using `$accessor`.
 macro_rules! opt_str_getter {
     ($struct:ty, $accessor:ident, $field:ident $(, $fallible:tt)?) => {
-        #[pyo3_stub_gen::derive::gen_stub_pymethods]
         #[pymethods]
         impl $struct {
             #[getter]
@@ -64,7 +62,6 @@ macro_rules! opt_str_getter {
 macro_rules! str_setter {
     ($struct:ty, $accessor:ident, $field:ident $(, $fallible:tt)?) => {
         ::paste::paste! {
-            #[pyo3_stub_gen::derive::gen_stub_pymethods]
             #[pymethods]
             impl $struct {
                 #[setter($field)]
@@ -81,7 +78,6 @@ macro_rules! str_setter {
 macro_rules! opt_str_setter {
     ($struct:ty, $accessor:ident, $field:ident $(, $fallible:tt)?) => {
         ::paste::paste! {
-            #[pyo3_stub_gen::derive::gen_stub_pymethods]
             #[pymethods]
             impl $struct {
                 #[setter($field)]
@@ -97,7 +93,6 @@ macro_rules! opt_str_setter {
 /// Clone a date under the dataset lock, then create its Python value after release.
 macro_rules! date_getter {
     ($struct:ty, $accessor:ident, $field:ident $(, $fallible:tt)?) => {
-        #[pyo3_stub_gen::derive::gen_stub_pymethods]
         #[pymethods]
         impl $struct {
             #[getter]
@@ -112,7 +107,6 @@ macro_rules! date_getter {
 /// Optional dates preserve None and share the fallible handle behavior of other getters.
 macro_rules! opt_date_getter {
     ($struct:ty, $accessor:ident, $field:ident $(, $fallible:tt)?) => {
-        #[pyo3_stub_gen::derive::gen_stub_pymethods]
         #[pymethods]
         impl $struct {
             #[getter]
@@ -128,7 +122,6 @@ macro_rules! opt_date_getter {
 macro_rules! converted_setter {
     ($struct:ty, $accessor:ident, $field:ident, $convert:path, $wrap:path $(, $fallible:tt)?) => {
         ::paste::paste! {
-            #[pyo3_stub_gen::derive::gen_stub_pymethods]
             #[pymethods]
             impl $struct {
                 #[setter($field)]
@@ -144,7 +137,6 @@ macro_rules! converted_setter {
 
 macro_rules! extra_methods {
     ($struct:ty, $accessor:ident, $mut_accessor:ident, [$($external:literal => $field:ident),+ $(,)?] $(, $fallible:tt)?) => {
-        #[pyo3_stub_gen::derive::gen_stub_pymethods]
         #[pymethods]
         impl $struct {
             #[getter(extra)]
@@ -247,7 +239,6 @@ macro_rules! extra_methods {
 
 macro_rules! standalone_model_methods {
     ($struct:ty, $state:ident, $variant:ident, $rust_type:ty, $accessor:ident $(, $fallible:tt)?) => {
-        #[pyo3_stub_gen::derive::gen_stub_pymethods]
         #[pymethods]
         impl $struct {
             #[staticmethod]
@@ -260,6 +251,7 @@ macro_rules! standalone_model_methods {
                 })
             }
 
+            #[pyo3(signature = () -> "dict[str, Any]")]
             fn model_dump(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 let value = self.$accessor(|model| serde_json::to_value(model)) $($fallible)?
                     .map_err(|error| PyValueError::new_err(error.to_string()))?;

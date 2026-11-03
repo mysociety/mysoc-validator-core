@@ -25,10 +25,7 @@ use fuzzy_date::FuzzyDate;
 use popolo_validator::MembershipType;
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::IntoPyObjectExt;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[gen_stub_pyclass]
 #[pyclass(name = "MembershipRedirect", from_py_object)]
 #[derive(Clone)]
 pub struct PyMembershipRedirect {
@@ -36,7 +33,6 @@ pub struct PyMembershipRedirect {
     pub redirect: String,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyMembershipRedirect {
     #[new]
@@ -64,7 +60,6 @@ enum MembershipState {
     Handle { shared: SharedPopolo, id: String },
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Membership")]
 pub struct PyMembership {
     inner: MembershipState,
@@ -114,7 +109,6 @@ impl PyMembership {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyMembership {
     #[new]
@@ -338,13 +332,18 @@ standalone_model_methods!(
     with_membership
 );
 
-#[gen_stub_pyclass]
+/// The live record or redirect returned by a collection's root view.
+#[derive(IntoPyObject)]
+enum PyMembershipItem {
+    Record(Py<PyMembership>),
+    Redirect(Py<PyMembershipRedirect>),
+}
+
 #[pyclass(name = "MembershipCollection")]
 pub struct PyMembershipCollection {
     shared: SharedPopolo,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyMembershipCollection {
     pub(super) fn __getitem__(&self, py: Python<'_>, id: &str) -> PyResult<Py<PyMembership>> {
@@ -374,7 +373,7 @@ impl PyMembershipCollection {
     }
 
     #[getter]
-    fn root(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn root(&self, py: Python<'_>) -> PyResult<Vec<PyMembershipItem>> {
         let ids: Vec<(String, bool)> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -401,19 +400,19 @@ impl PyMembershipCollection {
                             id: r.id,
                             redirect: r.redirect,
                         };
-                        Ok(Py::new(py, py_r)?.into_py_any(py)?)
+                        Ok(PyMembershipItem::Redirect(Py::new(py, py_r)?))
                     } else {
                         Err(PyValueError::new_err("Redirect not found"))
                     }
                 } else {
                     let m = PyMembership::make_handle(self.shared.clone(), id.clone());
-                    Ok(Py::new(py, m)?.into_py_any(py)?)
+                    Ok(PyMembershipItem::Record(Py::new(py, m)?))
                 }
             })
             .collect()
     }
 
-    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<Py<PyMembershipRedirect>>> {
         let redirects: Vec<_> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -435,7 +434,7 @@ impl PyMembershipCollection {
                     id: id.clone(),
                     redirect: redirect.clone(),
                 };
-                Ok(Py::new(py, py_r)?.into_py_any(py)?)
+                Py::new(py, py_r)
             })
             .collect()
     }

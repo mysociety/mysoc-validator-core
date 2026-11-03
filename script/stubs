@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+stub_dir=$(mktemp -d)
+trap 'rm -rf "$stub_dir"' EXIT
+
+uv run maturin generate-stubs --locked \
+    --manifest-path mysoc_validator_fast/Cargo.toml --out "$stub_dir"
+
+generated="$stub_dir/mysoc_validator_fast/_mysoc_validator_fast.pyi"
+checked_in="mysoc_validator_fast/python/mysoc_validator_fast/_mysoc_validator_fast.pyi"
+if [[ "${1:-}" == "--check" ]]; then
+    diff -u "$checked_in" "$generated"
+else
+    cp "$generated" "$checked_in"
+fi

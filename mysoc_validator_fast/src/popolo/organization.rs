@@ -20,14 +20,12 @@ use chrono::NaiveDate;
 use popolo_validator::{MembershipType, OrgType};
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 enum OrganizationState {
     Standalone(popolo_validator::Organization),
     Handle { shared: SharedPopolo, id: String },
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Organization")]
 pub struct PyOrganization {
     inner: OrganizationState,
@@ -81,7 +79,6 @@ impl PyOrganization {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyOrganization {
     #[new]
@@ -205,7 +202,6 @@ standalone_model_methods!(
 opt_str_getter!(PyOrganization, with_org, description, ?);
 opt_str_getter!(PyOrganization, with_org, parent_id, ?);
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyOrganization {
     #[getter]
@@ -219,13 +215,11 @@ impl PyOrganization {
     }
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "OrganizationCollection")]
 pub struct PyOrganizationCollection {
     shared: SharedPopolo,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyOrganizationCollection {
     pub(super) fn __getitem__(&self, py: Python<'_>, id: &str) -> PyResult<Py<PyOrganization>> {

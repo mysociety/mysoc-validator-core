@@ -25,10 +25,7 @@ use fuzzy_date::FuzzyDate;
 use popolo_validator::{MembershipReason, MembershipType, NameType, PersonType};
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::IntoPyObjectExt;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[gen_stub_pyclass]
 #[pyclass(name = "PersonRedirect", from_py_object)]
 #[derive(Clone)]
 pub struct PyPersonRedirect {
@@ -36,7 +33,6 @@ pub struct PyPersonRedirect {
     pub redirect: String,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyPersonRedirect {
     #[new]
@@ -64,7 +60,6 @@ enum PersonState {
     Handle { shared: SharedPopolo, id: String },
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Person")]
 pub struct PyPerson {
     inner: PersonState,
@@ -189,7 +184,6 @@ impl PyPerson {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyPerson {
     #[new]
@@ -272,6 +266,7 @@ impl PyPerson {
         })
     }
 
+    #[pyo3(signature = (date) -> "BasicPersonName | LordName | AltName | None")]
     fn get_main_name(
         &self,
         py: Python<'_>,
@@ -793,13 +788,18 @@ standalone_model_methods!(
     with_person
 );
 
-#[gen_stub_pyclass]
+/// The live record or redirect returned by a collection's root view.
+#[derive(IntoPyObject)]
+enum PyPersonItem {
+    Record(Py<PyPerson>),
+    Redirect(Py<PyPersonRedirect>),
+}
+
 #[pyclass(name = "PersonCollection")]
 pub struct PyPersonCollection {
     shared: SharedPopolo,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyPersonCollection {
     pub(super) fn __getitem__(&self, py: Python<'_>, id: &str) -> PyResult<Py<PyPerson>> {
@@ -826,7 +826,7 @@ impl PyPersonCollection {
     }
 
     #[getter]
-    fn root(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn root(&self, py: Python<'_>) -> PyResult<Vec<PyPersonItem>> {
         let ids: Vec<(String, bool)> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -853,19 +853,19 @@ impl PyPersonCollection {
                             id: r.id,
                             redirect: r.redirect,
                         };
-                        Ok(Py::new(py, py_r)?.into_py_any(py)?)
+                        Ok(PyPersonItem::Redirect(Py::new(py, py_r)?))
                     } else {
                         Err(PyValueError::new_err("PersonRedirect not found"))
                     }
                 } else {
                     let p = PyPerson::make_handle(self.shared.clone(), id.clone());
-                    Ok(Py::new(py, p)?.into_py_any(py)?)
+                    Ok(PyPersonItem::Record(Py::new(py, p)?))
                 }
             })
             .collect()
     }
 
-    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<Py<PyPersonRedirect>>> {
         let redirects: Vec<_> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -885,7 +885,7 @@ impl PyPersonCollection {
                     id: id.clone(),
                     redirect: redirect.clone(),
                 };
-                Ok(Py::new(py, py_r)?.into_py_any(py)?)
+                Py::new(py, py_r)
             })
             .collect()
     }

@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use std::fs;
 
 #[pyfunction]
-#[pyo3(signature = (folder, people_path=None))]
-pub(super) fn validate_transcript_folder(
+#[pyo3(signature = (folder, people_path=None) -> "list[dict[str, Any]]")]
+pub(crate) fn validate_transcript_folder(
     py: Python<'_>,
     folder: &Bound<'_, PyAny>,
     people_path: Option<&Bound<'_, PyAny>>,

@@ -11,7 +11,7 @@ use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList, PyType};
 use pyo3::IntoPyObjectExt;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+
 use regmem_validator as rv;
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -85,14 +85,12 @@ pub(super) fn py_to_detail_value(obj: &Bound<'_, PyAny>) -> PyResult<rv::DetailV
     ))
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "RegmemAnnotation", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemAnnotation {
     pub(crate) inner: rv::RegmemAnnotation,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemAnnotation {
     #[new]
@@ -148,14 +146,12 @@ impl PyRegmemAnnotation {
     }
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "RegmemDetail", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemDetail {
     pub(crate) inner: rv::RegmemDetail,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemDetail {
     #[new]
@@ -323,7 +319,6 @@ enum GroupState {
     },
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "RegmemDetailGroup")]
 pub struct PyRegmemDetailGroup {
     inner: GroupState,
@@ -367,7 +362,6 @@ impl PyRegmemDetailGroup {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemDetailGroup {
     #[new]
@@ -407,9 +401,11 @@ impl PyRegmemDetailGroup {
         })
     }
 
-    fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAny>> {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyResult<DetailIterator> {
         let py = slf.py();
-        Ok(slf.root().into_py_any(py)?.call_method0(py, "__iter__")?)
+        Ok(DetailIterator(
+            slf.root().into_py_any(py)?.call_method0(py, "__iter__")?,
+        ))
     }
 
     #[getter]
@@ -439,6 +435,7 @@ impl PyRegmemDetailGroup {
             .map_err(PyValueError::new_err)
     }
 
+    #[pyo3(signature = () -> "dict[str, Any]")]
     fn detail_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let dict = PyDict::new(py);
         // clone out the details first to avoid holding the lock during conversion
@@ -460,14 +457,12 @@ impl PyRegmemDetailGroup {
     }
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "RegmemSummary", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemSummary {
     pub(crate) inner: rv::RegmemSummary,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemSummary {
     #[getter]
@@ -522,5 +517,23 @@ impl PyRegmemSummary {
 
     fn __repr__(&self) -> String {
         format!("<RegmemSummary {}>", self.inner.base.comparable_id())
+    }
+}
+
+/// A normal Python iterator with its element type recorded for introspection.
+struct DetailIterator(Py<PyAny>);
+
+impl<'py> IntoPyObject<'py> for DetailIterator {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = std::convert::Infallible;
+
+    const OUTPUT_TYPE: pyo3::inspect::PyStaticExpr = pyo3::type_hint_subscript!(
+        pyo3::type_hint_identifier!("collections.abc", "Iterator"),
+        <PyRegmemDetail as IntoPyObject<'py>>::OUTPUT_TYPE
+    );
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
     }
 }
