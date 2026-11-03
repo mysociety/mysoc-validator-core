@@ -3,6 +3,7 @@
 use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::PyType;
 
 use regmem_validator as rv;
@@ -471,17 +472,7 @@ impl PyRegmemRegister {
 
     /// Iterate (person, category, entry, parent_entry) for every entry and
     /// sub-entry, mirroring upstream `iter_entries`.
-    fn iter_entries(
-        &self,
-        py: Python<'_>,
-    ) -> PyResult<
-        Vec<(
-            Py<PyRegmemPerson>,
-            Py<PyRegmemCategory>,
-            Py<PyRegmemEntry>,
-            Option<Py<PyRegmemEntry>>,
-        )>,
-    > {
+    fn iter_entries(&self, py: Python<'_>) -> PyResult<Vec<EntryContext>> {
         let locs = self.shared.read().unwrap().iter_entry_locations();
         let mut out = Vec::with_capacity(locs.len());
         let mut parents: std::collections::HashMap<(usize, usize, usize), Py<PyRegmemEntry>> =
@@ -510,8 +501,38 @@ impl PyRegmemRegister {
             if loc.sub_entry.is_none() {
                 parents.insert(key, entry.clone_ref(py));
             }
-            out.push((person, category, entry, parent_entry));
+            out.push(EntryContext {
+                person,
+                category,
+                entry,
+                parent_entry,
+            });
         }
         Ok(out)
+    }
+}
+
+/// A register entry with named location fields, converted to the public named tuple.
+struct EntryContext {
+    person: Py<PyRegmemPerson>,
+    category: Py<PyRegmemCategory>,
+    entry: Py<PyRegmemEntry>,
+    parent_entry: Option<Py<PyRegmemEntry>>,
+}
+
+impl<'py> IntoPyObject<'py> for EntryContext {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    const OUTPUT_TYPE: pyo3::inspect::PyStaticExpr =
+        pyo3::type_hint_identifier!("mysoc_validator_fast.interests", "EntryIterator");
+
+    fn into_pyobject(self, py: Python<'py>) -> PyResult<Self::Output> {
+        // Resolve lazily: interests imports this extension before defining EntryIterator.
+        static ENTRY_ITERATOR: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+        let entry_iterator =
+            ENTRY_ITERATOR.import(py, "mysoc_validator_fast.interests", "EntryIterator")?;
+        entry_iterator.call1((self.person, self.category, self.entry, self.parent_entry))
     }
 }

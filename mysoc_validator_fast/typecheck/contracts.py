@@ -60,8 +60,14 @@ def check_interests(
     assert_type(public_register.iter_entries(), Iterator[EntryIterator])
     assert_type(
         register.iter_entries(),
-        list[tuple[RegmemPerson, RegmemCategory, RegmemEntry, RegmemEntry | None]],
+        list[EntryIterator],
     )
+    for row in register.iter_entries():
+        assert_type(row.person, RegmemPerson)
+        assert_type(row.category, RegmemCategory)
+        assert_type(row.entry, RegmemEntry)
+        assert_type(row.parent_entry, RegmemEntry | None)
+        assert_type(row[2], RegmemEntry)
     annotation = RegmemAnnotation("author", "content", type="note")
     assert_type(annotation.type, str)
     RegmemAnnotation("author", "content", type=123)  # type: ignore[arg-type]
