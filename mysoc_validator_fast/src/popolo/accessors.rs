@@ -150,18 +150,18 @@ macro_rules! extra_methods {
             #[getter(extra)]
             fn extra_property(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Option<Py<PyExtra>>> {
                 if slf.$accessor(|inner| inner.extra.is_some()) $($fallible)? {
-                    Ok(Some(Py::new(py, PyExtra::new(slf.into_py(py)))?))
+                    Ok(Some(Py::new(py, PyExtra::new(pyo3::IntoPyObjectExt::into_py_any(slf, py)?))?))
                 } else {
                     Ok(None)
                 }
             }
 
-            fn _extra_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+            fn _extra_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 let extra = self.$accessor(|inner| inner.extra.clone().unwrap_or_default()) $($fallible)?;
                 json_value_to_py(py, &serde_json::Value::Object(extra))
             }
 
-            fn get_extra(&self, py: Python<'_>, key: &str) -> PyResult<Option<PyObject>> {
+            fn get_extra(&self, py: Python<'_>, key: &str) -> PyResult<Option<Py<PyAny>>> {
                 let value = self.$accessor(|inner| {
                     inner.extra.as_ref().and_then(|extra| extra.get(key)).cloned()
                 }) $($fallible)?;
@@ -184,12 +184,12 @@ macro_rules! extra_methods {
                 &self,
                 py: Python<'_>,
                 model: &Bound<'_, PyAny>,
-            ) -> PyResult<Option<PyObject>> {
+            ) -> PyResult<Option<Py<PyAny>>> {
                 if !self.$accessor(|inner| inner.extra.is_some()) $($fallible)? {
                     return Ok(None);
                 }
                 let extra = self._extra_dict(py)?;
-                Ok(Some(model.call_method1("model_validate", (extra,))?.into_py(py)))
+                Ok(Some(model.call_method1("model_validate", (extra,))?.unbind()))
             }
 
             fn get_localised_value(
@@ -260,7 +260,7 @@ macro_rules! standalone_model_methods {
                 })
             }
 
-            fn model_dump(&self, py: Python<'_>) -> PyResult<PyObject> {
+            fn model_dump(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 let value = self.$accessor(|model| serde_json::to_value(model)) $($fallible)?
                     .map_err(|error| PyValueError::new_err(error.to_string()))?;
                 json_value_to_py(py, &value)

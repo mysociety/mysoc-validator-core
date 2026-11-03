@@ -105,8 +105,14 @@ fn determine_completeness(date: &str) -> DateCompleteness {
     }
 }
 
-#[cfg_attr(feature = "python", gen_stub_pyclass)]
-#[cfg_attr(feature = "python", pyclass(subclass, module = "fuzzy_date"))]
+#[cfg_attr(
+    feature = "python",
+    gen_stub_pyclass(module = "mysoc_validator_fast._mysoc_validator_fast")
+)]
+#[cfg_attr(
+    feature = "python",
+    pyclass(subclass, module = "fuzzy_date", from_py_object)
+)]
 #[derive(Debug, Clone)]
 pub struct FuzzyDate {
     pub earliest_date: NaiveDate,

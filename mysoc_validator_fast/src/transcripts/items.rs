@@ -8,12 +8,13 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use pyo3::IntoPyObjectExt;
 use std::collections::BTreeMap;
 use transcript_validator::{validate_gid, TranscriptItem};
 
 macro_rules! transcript_item_class {
     ($rust_name:ident, $python_name:literal) => {
-        #[pyclass(name = $python_name)]
+        #[pyclass(name = $python_name, from_py_object)]
         #[derive(Clone)]
         pub struct $rust_name {
             item: TranscriptItem,
@@ -26,7 +27,7 @@ macro_rules! transcript_item_class {
             fn new(
                 id: Option<String>,
                 content: Option<&Bound<'_, PyAny>>,
-                items: Option<Vec<PyObject>>,
+                items: Option<Vec<Py<PyAny>>>,
                 attributes: Option<&Bound<'_, PyDict>>,
             ) -> PyResult<Self> {
                 if let Some(id) = &id {
@@ -54,7 +55,7 @@ macro_rules! transcript_item_class {
                 }
                 let text = match content {
                     Some(content) if content.is_instance_of::<PyDict>() => content
-                        .downcast::<PyDict>()?
+                        .cast::<PyDict>()?
                         .get_item("text")?
                         .map(|value| value.extract::<String>())
                         .transpose()?
@@ -89,7 +90,7 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn content(&self, py: Python<'_>) -> PyResult<PyObject> {
+            fn content(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 if $python_name == "DivisionCount" {
                     return Ok(self
                         .item
@@ -98,12 +99,12 @@ macro_rules! transcript_item_class {
                         .trim()
                         .parse::<i64>()
                         .ok()
-                        .into_py(py));
+                        .into_py_any(py)?);
                 }
                 if matches!($python_name, "MSPName" | "RepName") {
-                    return Ok(self.item.content.text.clone().into_py(py));
+                    return Ok(self.item.content.text.clone().into_py_any(py)?);
                 }
-                let content = PyDict::new_bound(py);
+                let content = PyDict::new(py);
                 content.set_item("text", &self.item.content.text)?;
                 content.set_item("raw", &self.item.content.raw)?;
                 Ok(content.into())
@@ -295,7 +296,7 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn count(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+            fn count(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
                 self.item
                     .children
                     .iter()
@@ -305,7 +306,7 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn representatives(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+            fn representatives(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
                 self.item
                     .children
                     .iter()
@@ -320,7 +321,7 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn rel_motions(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+            fn rel_motions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
                 self.item
                     .children
                     .iter()
@@ -329,8 +330,8 @@ macro_rules! transcript_item_class {
                     .collect()
             }
 
-            fn model_dump(&self, py: Python<'_>) -> PyResult<PyObject> {
-                let result = PyDict::new_bound(py);
+            fn model_dump(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+                let result = PyDict::new(py);
                 result.set_item("@tag", &self.item.tag)?;
                 for (key, value) in &self.item.attributes {
                     result.set_item(key, value)?;
@@ -341,7 +342,7 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn items(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+            fn items(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
                 self.item
                     .children
                     .iter()
@@ -381,10 +382,10 @@ transcript_item_class!(PyRepName, "RepName");
 transcript_item_class!(PyRepList, "RepList");
 transcript_item_class!(PyMotion, "Motion");
 
-pub(super) fn item_to_python(py: Python<'_>, item: &TranscriptItem) -> PyResult<PyObject> {
+pub(super) fn item_to_python(py: Python<'_>, item: &TranscriptItem) -> PyResult<Py<PyAny>> {
     macro_rules! create_item {
         ($type:ident) => {
-            Ok(Py::new(py, $type { item: item.clone() })?.into_py(py))
+            Ok(Py::new(py, $type { item: item.clone() })?.into_py_any(py)?)
         };
     }
     match item.tag.as_str() {

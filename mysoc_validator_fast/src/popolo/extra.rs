@@ -13,13 +13,13 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 #[gen_stub_pyclass]
 #[pyclass(name = "Extra")]
 pub struct PyExtra {
-    owner: PyObject,
+    owner: Py<PyAny>,
 }
 
 #[gen_stub_pymethods]
 #[pymethods]
 impl PyExtra {
-    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<PyObject> {
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
         let value = self.owner.call_method1(py, "get_extra", (key,))?;
         if value.is_none(py) {
             Err(PyKeyError::new_err(key.to_string()))
@@ -28,13 +28,13 @@ impl PyExtra {
         }
     }
 
-    fn __setitem__(&self, py: Python<'_>, key: &str, value: PyObject) -> PyResult<()> {
+    fn __setitem__(&self, py: Python<'_>, key: &str, value: Py<PyAny>) -> PyResult<()> {
         self.owner.call_method1(py, "set_extra", (key, value))?;
         Ok(())
     }
 
     #[getter]
-    fn localised_values(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn localised_values(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let value = self
             .owner
             .call_method1(py, "get_extra", ("localised_values",))?;
@@ -45,7 +45,7 @@ impl PyExtra {
         }
     }
 
-    fn model_dump(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn model_dump(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         self.owner.call_method0(py, "_extra_dict")
     }
 
@@ -55,7 +55,7 @@ impl PyExtra {
 }
 
 impl PyExtra {
-    pub(super) fn new(owner: PyObject) -> Self {
+    pub(super) fn new(owner: Py<PyAny>) -> Self {
         Self { owner }
     }
 }

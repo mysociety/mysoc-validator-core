@@ -12,7 +12,7 @@ pub(super) fn validate_transcript_folder(
     py: Python<'_>,
     folder: &Bound<'_, PyAny>,
     people_path: Option<&Bound<'_, PyAny>>,
-) -> PyResult<Vec<PyObject>> {
+) -> PyResult<Vec<Py<PyAny>>> {
     let folder = filesystem_path(folder)?;
     let person_ids = people_path
         .map(|path| load_person_ids(&filesystem_path(path)?))
@@ -22,7 +22,7 @@ pub(super) fn validate_transcript_folder(
     results
         .into_iter()
         .map(|result| {
-            let value = PyDict::new_bound(py);
+            let value = PyDict::new(py);
             value.set_item("path", result.path.to_string_lossy().as_ref())?;
             value.set_item(
                 "errors",

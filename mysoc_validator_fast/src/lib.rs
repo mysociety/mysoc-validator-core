@@ -13,7 +13,7 @@ pub use popolo::{
     PyPerson, PyPersonCollection, PyPersonRedirect, PyPopolo, PyPost, PyPostCollection,
 };
 
-#[pymodule]
+#[pymodule(gil_used = true)]
 fn _mysoc_validator_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<fuzzy_date::FuzzyDate>()?;
     popolo::register_popolo_classes(m)?;
