@@ -113,13 +113,13 @@ impl FuzzyDate {
         }
     }
 
-    fn __add__(&self, py: Python, other: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn __add__(&self, py: Python, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let days: i64 = other.getattr("days")?.extract()?;
         let result = self.earliest_date + chrono::Duration::days(days);
-        let date_cls = py.import_bound("datetime")?.getattr("date")?;
+        let date_cls = py.import("datetime")?.getattr("date")?;
         date_cls
             .call1((result.year(), result.month(), result.day()))
-            .map(|d| d.into_py(py))
+            .map(Bound::unbind)
     }
 
     #[pyo3(name = "fromisoformat")]

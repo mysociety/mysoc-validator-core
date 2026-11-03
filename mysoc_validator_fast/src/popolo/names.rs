@@ -8,14 +8,14 @@ use pyo3::prelude::*;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 #[gen_stub_pyclass]
-#[pyclass(name = "LordName")]
+#[pyclass(name = "LordName", from_py_object)]
 #[derive(Clone)]
 pub struct PyLordName {
     inner: popolo_validator::LordName,
 }
 
 #[gen_stub_pyclass]
-#[pyclass(name = "BasicPersonName")]
+#[pyclass(name = "BasicPersonName", from_py_object)]
 #[derive(Clone)]
 pub struct PyBasicPersonName {
     inner: popolo_validator::BasicPersonName,
@@ -48,7 +48,7 @@ impl PyBasicPersonName {
 }
 
 #[gen_stub_pyclass]
-#[pyclass(name = "AltName")]
+#[pyclass(name = "AltName", from_py_object)]
 #[derive(Clone)]
 pub struct PyAltName {
     inner: popolo_validator::AltName,

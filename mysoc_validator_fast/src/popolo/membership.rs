@@ -25,10 +25,11 @@ use fuzzy_date::FuzzyDate;
 use popolo_validator::MembershipType;
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::IntoPyObjectExt;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 #[gen_stub_pyclass]
-#[pyclass(name = "MembershipRedirect")]
+#[pyclass(name = "MembershipRedirect", from_py_object)]
 #[derive(Clone)]
 pub struct PyMembershipRedirect {
     pub id: String,
@@ -373,7 +374,7 @@ impl PyMembershipCollection {
     }
 
     #[getter]
-    fn root(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn root(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let ids: Vec<(String, bool)> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -400,19 +401,19 @@ impl PyMembershipCollection {
                             id: r.id,
                             redirect: r.redirect,
                         };
-                        Ok(Py::new(py, py_r)?.into_py(py))
+                        Ok(Py::new(py, py_r)?.into_py_any(py)?)
                     } else {
                         Err(PyValueError::new_err("Redirect not found"))
                     }
                 } else {
                     let m = PyMembership::make_handle(self.shared.clone(), id.clone());
-                    Ok(Py::new(py, m)?.into_py(py))
+                    Ok(Py::new(py, m)?.into_py_any(py)?)
                 }
             })
             .collect()
     }
 
-    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let redirects: Vec<_> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -434,7 +435,7 @@ impl PyMembershipCollection {
                     id: id.clone(),
                     redirect: redirect.clone(),
                 };
-                Ok(Py::new(py, py_r)?.into_py(py))
+                Ok(Py::new(py, py_r)?.into_py_any(py)?)
             })
             .collect()
     }
@@ -443,7 +444,7 @@ impl PyMembershipCollection {
         self.extend(py, vec![item.clone().unbind()])
     }
 
-    fn extend(&self, py: Python<'_>, items: Vec<PyObject>) -> PyResult<()> {
+    fn extend(&self, py: Python<'_>, items: Vec<Py<PyAny>>) -> PyResult<()> {
         for item in &items {
             let bound = item.bind(py);
             if let Ok(m) = bound.extract::<PyRef<PyMembership>>() {

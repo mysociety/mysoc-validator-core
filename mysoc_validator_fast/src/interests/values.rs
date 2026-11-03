@@ -10,6 +10,7 @@ use chrono::NaiveDate;
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList, PyType};
+use pyo3::IntoPyObjectExt;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use regmem_validator as rv;
 use rust_decimal::Decimal;
@@ -23,23 +24,23 @@ pub(super) fn content_type_from_str(s: &str) -> PyResult<rv::ContentType> {
 }
 
 /// Convert a `DetailValue` to a native Python object.
-pub(super) fn detail_value_to_py(py: Python<'_>, value: &rv::DetailValue) -> PyResult<PyObject> {
+pub(super) fn detail_value_to_py(py: Python<'_>, value: &rv::DetailValue) -> PyResult<Py<PyAny>> {
     Ok(match value {
-        rv::DetailValue::Int(i) => i.into_py(py),
-        rv::DetailValue::Str(s) => s.into_py(py),
-        rv::DetailValue::Float(f) => f.into_py(py),
-        rv::DetailValue::Bool(b) => b.into_py(py),
-        rv::DetailValue::Date(d) => d.into_py(py),
+        rv::DetailValue::Int(i) => i.into_py_any(py)?,
+        rv::DetailValue::Str(s) => s.into_py_any(py)?,
+        rv::DetailValue::Float(f) => f.into_py_any(py)?,
+        rv::DetailValue::Bool(b) => b.into_py_any(py)?,
+        rv::DetailValue::Date(d) => d.into_py_any(py)?,
         rv::DetailValue::Decimal(d) => {
-            let decimal_cls = py.import_bound("decimal")?.getattr("Decimal")?;
-            decimal_cls.call1((d.to_string(),))?.into_py(py)
+            let decimal_cls = py.import("decimal")?.getattr("Decimal")?;
+            decimal_cls.call1((d.to_string(),))?.into_py_any(py)?
         }
         rv::DetailValue::Container(groups) => {
             let mut out: Vec<Py<PyRegmemDetailGroup>> = Vec::with_capacity(groups.len());
             for group in groups {
                 out.push(Py::new(py, PyRegmemDetailGroup::standalone(group.clone()))?);
             }
-            out.into_py(py)
+            out.into_py_any(py)?
         }
     })
 }
@@ -48,10 +49,10 @@ pub(super) fn detail_value_to_py(py: Python<'_>, value: &rv::DetailValue) -> PyR
 pub(super) fn py_to_detail_value(obj: &Bound<'_, PyAny>) -> PyResult<rv::DetailValue> {
     let py = obj.py();
     // bool must be checked before int (Python bool is an int subclass).
-    if let Ok(b) = obj.downcast::<PyBool>() {
+    if let Ok(b) = obj.cast::<PyBool>() {
         return Ok(rv::DetailValue::Bool(b.is_true()));
     }
-    let decimal_cls = py.import_bound("decimal")?.getattr("Decimal")?;
+    let decimal_cls = py.import("decimal")?.getattr("Decimal")?;
     if obj.is_instance(&decimal_cls)? {
         let s: String = obj.str()?.extract()?;
         return Decimal::from_str(&s)
@@ -71,7 +72,7 @@ pub(super) fn py_to_detail_value(obj: &Bound<'_, PyAny>) -> PyResult<rv::DetailV
     if let Ok(s) = obj.extract::<String>() {
         return Ok(rv::DetailValue::Str(s));
     }
-    if let Ok(items) = obj.downcast::<PyList>() {
+    if let Ok(items) = obj.cast::<PyList>() {
         let mut groups = Vec::with_capacity(items.len());
         for item in items {
             let group = item.extract::<PyRef<PyRegmemDetailGroup>>()?;
@@ -85,7 +86,7 @@ pub(super) fn py_to_detail_value(obj: &Bound<'_, PyAny>) -> PyResult<rv::DetailV
 }
 
 #[gen_stub_pyclass]
-#[pyclass(name = "RegmemAnnotation")]
+#[pyclass(name = "RegmemAnnotation", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemAnnotation {
     pub(crate) inner: rv::RegmemAnnotation,
@@ -148,7 +149,7 @@ impl PyRegmemAnnotation {
 }
 
 #[gen_stub_pyclass]
-#[pyclass(name = "RegmemDetail")]
+#[pyclass(name = "RegmemDetail", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemDetail {
     pub(crate) inner: rv::RegmemDetail,
@@ -216,21 +217,21 @@ impl PyRegmemDetail {
     }
 
     #[getter]
-    fn value(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn value(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         match &self.inner.value {
             Some(v) => Ok(Some(detail_value_to_py(py, v)?)),
             None => Ok(None),
         }
     }
 
-    fn dict_value(&self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn dict_value(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let Some(value) = &self.inner.value else {
             return Ok(None);
         };
         if let rv::DetailValue::Container(groups) = value {
-            let rows = PyList::empty_bound(py);
+            let rows = PyList::empty(py);
             for group in groups {
-                let row = PyDict::new_bound(py);
+                let row = PyDict::new(py);
                 for detail in &group.0 {
                     if let Some(slug) = &detail.slug {
                         row.set_item(
@@ -406,9 +407,9 @@ impl PyRegmemDetailGroup {
         })
     }
 
-    fn __iter__(slf: PyRef<'_, Self>) -> PyResult<PyObject> {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<PyAny>> {
         let py = slf.py();
-        Ok(slf.root().into_py(py).call_method0(py, "__iter__")?)
+        Ok(slf.root().into_py_any(py)?.call_method0(py, "__iter__")?)
     }
 
     #[getter]
@@ -439,7 +440,7 @@ impl PyRegmemDetailGroup {
     }
 
     fn detail_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         // clone out the details first to avoid holding the lock during conversion
         let details = self.with_group(|g| g.0.clone());
         for detail in &details {
@@ -460,7 +461,7 @@ impl PyRegmemDetailGroup {
 }
 
 #[gen_stub_pyclass]
-#[pyclass(name = "RegmemSummary")]
+#[pyclass(name = "RegmemSummary", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemSummary {
     pub(crate) inner: rv::RegmemSummary,

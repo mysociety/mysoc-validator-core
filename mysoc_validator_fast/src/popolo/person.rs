@@ -25,10 +25,11 @@ use fuzzy_date::FuzzyDate;
 use popolo_validator::{MembershipReason, MembershipType, NameType, PersonType};
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::IntoPyObjectExt;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 #[gen_stub_pyclass]
-#[pyclass(name = "PersonRedirect")]
+#[pyclass(name = "PersonRedirect", from_py_object)]
 #[derive(Clone)]
 pub struct PyPersonRedirect {
     pub id: String,
@@ -271,7 +272,11 @@ impl PyPerson {
         })
     }
 
-    fn get_main_name(&self, py: Python<'_>, date: &Bound<'_, PyAny>) -> PyResult<Option<PyObject>> {
+    fn get_main_name(
+        &self,
+        py: Python<'_>,
+        date: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Py<PyAny>>> {
         let date = py_to_naive_date(date)?;
         let name = self.with_person(|person| {
             person
@@ -289,13 +294,13 @@ impl PyPerson {
         });
         name.map(|name| match name {
             popolo_validator::NameOptions::BasicPersonName(inner) => {
-                Py::new(py, PyBasicPersonName::from_owned(inner)).map(|value| value.into_py(py))
+                Py::new(py, PyBasicPersonName::from_owned(inner)).map(Py::into_any)
             }
             popolo_validator::NameOptions::LordName(inner) => {
-                Py::new(py, PyLordName::from_owned(inner)).map(|value| value.into_py(py))
+                Py::new(py, PyLordName::from_owned(inner)).map(Py::into_any)
             }
             popolo_validator::NameOptions::AltName(inner) => {
-                Py::new(py, PyAltName::from_owned(inner)).map(|value| value.into_py(py))
+                Py::new(py, PyAltName::from_owned(inner)).map(Py::into_any)
             }
         })
         .transpose()
@@ -821,7 +826,7 @@ impl PyPersonCollection {
     }
 
     #[getter]
-    fn root(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn root(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let ids: Vec<(String, bool)> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -848,19 +853,19 @@ impl PyPersonCollection {
                             id: r.id,
                             redirect: r.redirect,
                         };
-                        Ok(Py::new(py, py_r)?.into_py(py))
+                        Ok(Py::new(py, py_r)?.into_py_any(py)?)
                     } else {
                         Err(PyValueError::new_err("PersonRedirect not found"))
                     }
                 } else {
                     let p = PyPerson::make_handle(self.shared.clone(), id.clone());
-                    Ok(Py::new(py, p)?.into_py(py))
+                    Ok(Py::new(py, p)?.into_py_any(py)?)
                 }
             })
             .collect()
     }
 
-    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn redirects(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let redirects: Vec<_> = {
             let guard = self.shared.read().unwrap();
             guard
@@ -880,7 +885,7 @@ impl PyPersonCollection {
                     id: id.clone(),
                     redirect: redirect.clone(),
                 };
-                Ok(Py::new(py, py_r)?.into_py(py))
+                Ok(Py::new(py, py_r)?.into_py_any(py)?)
             })
             .collect()
     }

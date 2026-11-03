@@ -11,6 +11,7 @@ use items::{
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
+use pyo3::IntoPyObjectExt;
 use transcript_validator::{Transcript, TranscriptError};
 
 fn validation_error(errors: Vec<TranscriptError>) -> PyErr {
@@ -60,7 +61,7 @@ impl PyTranscript {
     }
 
     #[getter]
-    fn items(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         self.transcript
             .items
             .iter()
@@ -68,7 +69,7 @@ impl PyTranscript {
             .collect()
     }
 
-    fn iter_speeches(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn iter_speeches(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         self.transcript
             .items
             .iter()
@@ -77,7 +78,7 @@ impl PyTranscript {
             .collect()
     }
 
-    fn iter_type(&self, py: Python<'_>, item_type: &Bound<'_, PyType>) -> PyResult<Vec<PyObject>> {
+    fn iter_type(&self, py: Python<'_>, item_type: &Bound<'_, PyType>) -> PyResult<Vec<Py<PyAny>>> {
         let mut matching = Vec::new();
         for item in &self.transcript.items {
             let object = item_to_python(py, item)?;
@@ -88,7 +89,7 @@ impl PyTranscript {
         Ok(matching)
     }
 
-    fn iter_has_text(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn iter_has_text(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         self.transcript
             .items
             .iter()
@@ -97,9 +98,9 @@ impl PyTranscript {
             .collect()
     }
 
-    fn iter_headed_speeches(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
-        let mut major: Option<PyObject> = None;
-        let mut minor: Option<PyObject> = None;
+    fn iter_headed_speeches(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let mut major: Option<Py<PyAny>> = None;
+        let mut minor: Option<Py<PyAny>> = None;
         let mut speech_index: i64 = -1;
         let mut results = Vec::new();
         for item in &self.transcript.items {
@@ -121,7 +122,7 @@ impl PyTranscript {
                             item_to_python(py, item)?,
                             speech_index,
                         )
-                            .into_py(py),
+                            .into_py_any(py)?,
                     );
                 }
                 _ => {}

@@ -204,11 +204,9 @@ validation conservatively checks possible overlaps. These policies are explicit
 and are not inferred from Rust date equality.
 
 The checked-in type stub includes hand-maintained transcript and compatibility
-APIs alongside annotated bindings. Run the generator only with a saved copy and
-review its diff; do not replace the complete stub blindly:
 
 ```bash
-cargo run --manifest-path mysoc_validator_fast/Cargo.toml --bin stub_gen
+cargo run --manifest-path mysoc_validator_fast/Cargo.toml --bin stub_gen -- /tmp/mysoc-validator-stubs
 cargo doc --workspace --no-deps
 ```
 

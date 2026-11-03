@@ -18,7 +18,7 @@ use super::values::{PyRegmemAnnotation, PyRegmemDetail, PyRegmemDetailGroup};
 use super::SharedRegister;
 
 #[gen_stub_pyclass]
-#[pyclass(name = "RegmemEntry")]
+#[pyclass(name = "RegmemEntry", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemEntry {
     shared: SharedRegister,
@@ -260,7 +260,7 @@ impl PyRegmemEntry {
         })
     }
 
-    fn get_detail_value(&self, py: Python<'_>, name: &str) -> PyResult<Option<PyObject>> {
+    fn get_detail_value(&self, py: Python<'_>, name: &str) -> PyResult<Option<Py<PyAny>>> {
         let value = self.with_base(|b| b.get_detail_value(name).cloned());
         match value {
             Some(v) => Ok(Some(detail_value_to_py(py, &v)?)),
@@ -275,7 +275,7 @@ impl PyRegmemEntry {
         reduce: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyDict>> {
         let base = self.with_base(Clone::clone);
-        let output = PyDict::new_bound(py);
+        let output = PyDict::new(py);
         output.set_item("id", base.comparable_id())?;
         output.set_item("content", base.content)?;
         if let Some(date) = base.date_registered {
@@ -301,11 +301,11 @@ impl PyRegmemEntry {
                 let Some(value) = output.get_item(&key)? else {
                     continue;
                 };
-                let Ok(groups) = value.downcast::<PyList>() else {
+                let Ok(groups) = value.cast::<PyList>() else {
                     continue;
                 };
                 for slug in slugs.extract::<Vec<String>>()? {
-                    let values = PyList::empty_bound(py);
+                    let values = PyList::empty(py);
                     for group in groups {
                         if let Ok(group) = group.extract::<PyRef<PyRegmemDetailGroup>>() {
                             if let Some(detail) = group.with_group(|details| {

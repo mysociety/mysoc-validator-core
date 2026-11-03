@@ -4,6 +4,7 @@ use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
+use pyo3::IntoPyObjectExt;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use regmem_validator as rv;
 use std::sync::{Arc, RwLock};
@@ -15,7 +16,7 @@ use super::values::{PyRegmemAnnotation, PyRegmemSummary};
 use super::SharedRegister;
 
 #[gen_stub_pyclass]
-#[pyclass(name = "RegmemCategory")]
+#[pyclass(name = "RegmemCategory", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemCategory {
     shared: SharedRegister,
@@ -162,7 +163,7 @@ impl PyRegmemCategory {
 }
 
 #[gen_stub_pyclass]
-#[pyclass(name = "RegmemPerson")]
+#[pyclass(name = "RegmemPerson", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemPerson {
     shared: SharedRegister,
@@ -477,10 +478,10 @@ impl PyRegmemRegister {
 
     /// Iterate (person, category, entry, parent_entry) for every entry and
     /// sub-entry, mirroring upstream `iter_entries`.
-    fn iter_entries(&self, py: Python<'_>) -> PyResult<Vec<PyObject>> {
+    fn iter_entries(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
         let locs = self.shared.read().unwrap().iter_entry_locations();
-        let mut out: Vec<PyObject> = Vec::with_capacity(locs.len());
-        let mut parents: std::collections::HashMap<(usize, usize, usize), PyObject> =
+        let mut out: Vec<Py<PyAny>> = Vec::with_capacity(locs.len());
+        let mut parents: std::collections::HashMap<(usize, usize, usize), Py<PyAny>> =
             std::collections::HashMap::new();
         for loc in locs {
             let person = Py::new(
@@ -500,7 +501,7 @@ impl PyRegmemRegister {
             )?;
             let entry = Py::new(py, PyRegmemEntry::handle(self.shared.clone(), loc))?;
             let key = (loc.person, loc.category, loc.entry);
-            let entry_object = entry.into_py(py);
+            let entry_object = entry.into_py_any(py)?;
             let parent = loc
                 .sub_entry
                 .and_then(|_| parents.get(&key).map(|parent| parent.clone_ref(py)))
@@ -508,16 +509,16 @@ impl PyRegmemRegister {
             if loc.sub_entry.is_none() {
                 parents.insert(key, entry_object.clone_ref(py));
             }
-            let tuple = pyo3::types::PyTuple::new_bound(
+            let tuple = pyo3::types::PyTuple::new(
                 py,
                 &[
-                    person.into_py(py),
-                    category.into_py(py),
+                    person.into_py_any(py)?,
+                    category.into_py_any(py)?,
                     entry_object,
                     parent,
                 ],
             );
-            out.push(tuple.into_py(py));
+            out.push(tuple?.into_any().unbind());
         }
         Ok(out)
     }

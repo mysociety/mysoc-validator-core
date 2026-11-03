@@ -10,8 +10,8 @@ python = ["dep:pyo3", "dep:pyo3-stub-gen"]
 chrono = "0.4.38"
 serde = "1.0.203"
 serde_derive = "1.0.203"
-pyo3 = { version = "0.22.2", features = ["chrono"], optional = true }
-pyo3-stub-gen = { version = "0.6", optional = true }
+pyo3 = { version = "0.30.1", features = ["chrono"], optional = true }
+pyo3-stub-gen = { version = "0.23.2", optional = true }
 
 [lib]
 crate-type = ["rlib"]
