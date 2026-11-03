@@ -14,6 +14,8 @@ Typical usage::
     print(person.names_on_date(date.today()))
 """
 
+from __future__ import annotations
+
 from .consts import Chamber, CommonKey, IdentifierScheme, MembershipReason
 from .dates import ApproxDate, FixedDate
 from .interests import (
@@ -42,15 +44,6 @@ from .popolo import (
     Popolo,
     Post,
 )
-from .popolo_extras import (
-    AreaExtra,
-    Extra,
-    LocalisedLabelsExtra,
-    MembershipExtra,
-    OrganizationExtra,
-    PersonExtra,
-    PostExtra,
-)
 from .transcripts import (
     Agreement,
     Division,
@@ -63,8 +56,8 @@ from .transcripts import (
     MSPName,
     OralHeading,
     Question,
-    Reply,
     RepList,
+    Reply,
     RepName,
     Source,
     Speech,
@@ -75,43 +68,35 @@ from .transcripts import (
 )
 
 __all__ = [
-    "ApproxDate",
     "Agreement",
     "AltName",
+    "ApproxDate",
     "Area",
-    "AreaExtra",
     "BasicPersonName",
     "Chamber",
     "CommonKey",
-    "FixedDate",
     "Division",
     "DivisionCount",
+    "EntryIterator",
+    "FixedDate",
     "GIDRedirect",
     "HeaderSpeechTuple",
     "IdentifierScheme",
-    "Extra",
-    "EntryIterator",
-    "LocalisedLabelsExtra",
     "LordName",
+    "MSPName",
     "MajorHeading",
     "Membership",
-    "MembershipExtra",
     "MembershipReason",
     "MembershipRedirect",
     "MinorHeading",
     "Motion",
-    "MSPName",
     "OralHeading",
     "Organization",
-    "OrganizationExtra",
     "Person",
-    "PersonExtra",
     "PersonRedirect",
     "Popolo",
     "Post",
-    "PostExtra",
     "Question",
-    "Reply",
     "RegmemAnnotation",
     "RegmemCategory",
     "RegmemDetail",
@@ -123,6 +108,7 @@ __all__ = [
     "RegmemSummary",
     "RepList",
     "RepName",
+    "Reply",
     "Source",
     "Speech",
     "SpeechItem",

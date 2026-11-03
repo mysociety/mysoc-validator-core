@@ -33,6 +33,7 @@ from mysoc_validator_fast._mysoc_validator_fast import (
 )
 from mysoc_validator_fast.interests import EntryIterator
 from mysoc_validator_fast.interests import RegmemRegister as PublicRegister
+from mysoc_validator_fast.popolo_extras import Extra
 from mysoc_validator_fast.transcripts import HeaderSpeechTuple
 
 
@@ -94,3 +95,10 @@ def check_transcripts(transcript: Transcript, speech: Speech) -> None:
         assert_type(row[2], Speech)
     assert_type(validate_transcript_folder("transcripts"), list[dict[str, Any]])
     speech.content["text"].nonexistent_method()  # type: ignore[attr-defined]
+
+
+def check_extra_schema(extra: Extra) -> None:
+    """
+    Preserve typed schema access through the explicit extras module.
+    """
+    assert_type(extra.model_dump(), dict[str, Any])

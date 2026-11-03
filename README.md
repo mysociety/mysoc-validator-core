@@ -72,6 +72,13 @@ extras. Rust stores their JSON; `record.get_extra_as(CustomExtra)` validates a
 snapshot against a caller-defined schema. Write changes through `set_extra` or
 the live `extra` proxy; editing a typed snapshot does not mutate the dataset.
 
+Import these schemas explicitly so ordinary package imports do not initialize
+Pydantic:
+
+```python
+from mysoc_validator_fast.popolo_extras import Extra, MembershipExtra, PersonExtra
+```
+
 **Popolo architecture:** Dataset data lives in a single Rust `Arc<RwLock<Popolo>>`. Collection lookups return thin handles that read and write through to Rust on demand. Standalone constructors own independent values, and appending copies those values into the dataset. Names and date getters return detached copies. This means:
 
 - Loading is fast: Rust parses and validates JSON, then Python gets lightweight handles.

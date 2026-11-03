@@ -218,7 +218,7 @@ def test_typed_extra_is_a_snapshot_and_explicit_writes_update_the_record() -> No
     """
     Project schemas remain subclassable without replacing Rust's live storage.
     """
-    from mysoc_validator_fast import MembershipExtra
+    from mysoc_validator_fast.popolo_extras import MembershipExtra
 
     class ProjectExtra(MembershipExtra):
         """

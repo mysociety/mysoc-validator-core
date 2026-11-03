@@ -2,11 +2,12 @@ import json
 from datetime import date
 
 import pytest
+from mysoc_validator_fast.popolo_extras import MembershipExtra
+
 from mysoc_validator_fast import (
     Area,
-    Membership,
-    MembershipExtra,
     LordName,
+    Membership,
     Organization,
     Person,
     Popolo,
