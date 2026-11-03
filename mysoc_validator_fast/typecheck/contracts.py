@@ -33,6 +33,7 @@ from mysoc_validator_fast._mysoc_validator_fast import (
 )
 from mysoc_validator_fast.interests import EntryIterator
 from mysoc_validator_fast.interests import RegmemRegister as PublicRegister
+from mysoc_validator_fast.transcripts import HeaderSpeechTuple
 
 
 def check_popolo(popolo: Popolo, person: Person) -> None:
@@ -83,7 +84,13 @@ def check_transcripts(transcript: Transcript, speech: Speech) -> None:
     assert_type(transcript.iter_speeches(), list[Speech])
     assert_type(
         transcript.iter_headed_speeches(),
-        list[tuple[MajorHeading | None, MinorHeading | None, Speech, int]],
+        list[HeaderSpeechTuple],
     )
+    for row in transcript.iter_headed_speeches():
+        assert_type(row.major_heading, MajorHeading | None)
+        assert_type(row.minor_heading, MinorHeading | None)
+        assert_type(row.speech, Speech)
+        assert_type(row.speech_index, int)
+        assert_type(row[2], Speech)
     assert_type(validate_transcript_folder("transcripts"), list[dict[str, Any]])
     speech.content["text"].nonexistent_method()  # type: ignore[attr-defined]

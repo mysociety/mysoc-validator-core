@@ -12,6 +12,7 @@ pub(crate) use items::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::PyType;
 use transcript_validator::{Transcript, TranscriptError};
 
@@ -107,17 +108,7 @@ impl PyTranscript {
             .collect()
     }
 
-    fn iter_headed_speeches(
-        &self,
-        py: Python<'_>,
-    ) -> PyResult<
-        Vec<(
-            Option<Py<PyMajorHeading>>,
-            Option<Py<PyMinorHeading>>,
-            Py<PySpeech>,
-            i64,
-        )>,
-    > {
+    fn iter_headed_speeches(&self, py: Python<'_>) -> PyResult<Vec<HeadedSpeechContext>> {
         let mut major: Option<Py<PyMajorHeading>> = None;
         let mut minor: Option<Py<PyMinorHeading>> = None;
         let mut speech_index: i64 = -1;
@@ -134,16 +125,49 @@ impl PyTranscript {
                 }
                 "speech" => {
                     speech_index += 1;
-                    results.push((
-                        major.as_ref().map(|value| value.clone_ref(py)),
-                        minor.as_ref().map(|value| value.clone_ref(py)),
-                        Py::new(py, PySpeech { item: item.clone() })?,
+                    results.push(HeadedSpeechContext {
+                        major_heading: major.as_ref().map(|value| value.clone_ref(py)),
+                        minor_heading: minor.as_ref().map(|value| value.clone_ref(py)),
+                        speech: Py::new(py, PySpeech { item: item.clone() })?,
                         speech_index,
-                    ));
+                    });
                 }
                 _ => {}
             }
         }
         Ok(results)
+    }
+}
+
+/// A speech with its heading context, converted to the public named tuple.
+struct HeadedSpeechContext {
+    major_heading: Option<Py<PyMajorHeading>>,
+    minor_heading: Option<Py<PyMinorHeading>>,
+    speech: Py<PySpeech>,
+    speech_index: i64,
+}
+
+impl<'py> IntoPyObject<'py> for HeadedSpeechContext {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = PyErr;
+
+    const OUTPUT_TYPE: pyo3::inspect::PyStaticExpr =
+        pyo3::type_hint_identifier!("mysoc_validator_fast.transcripts", "HeaderSpeechTuple");
+
+    fn into_pyobject(self, py: Python<'py>) -> PyResult<Self::Output> {
+        // Resolve lazily: transcripts imports this extension before defining HeaderSpeechTuple.
+        static HEADER_SPEECH_TUPLE: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+        let header_speech_tuple = HEADER_SPEECH_TUPLE.import(
+            py,
+            "mysoc_validator_fast.transcripts",
+            "HeaderSpeechTuple",
+        )?;
+        header_speech_tuple.call1((
+            self.major_heading,
+            self.minor_heading,
+            self.speech,
+            self.speech_index,
+        ))
     }
 }
