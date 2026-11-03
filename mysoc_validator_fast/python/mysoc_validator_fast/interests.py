@@ -95,6 +95,8 @@ class RegmemRegister(_RustRegmemRegister):
         Path(path).write_text(content)
 
     def iter_entries(self) -> Iterator[EntryIterator]:
-        """Iterate entries with named parent context."""
+        """
+        Iterate the named entry contexts constructed by the Rust binding.
+        """
 
-        return (EntryIterator(*row) for row in super().iter_entries())
+        return iter(super().iter_entries())

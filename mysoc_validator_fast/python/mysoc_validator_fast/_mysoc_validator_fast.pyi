@@ -1,6 +1,7 @@
 from _typeshed import SupportsGetItem
 from collections.abc import Iterator
 from datetime import date
+from mysoc_validator_fast.interests import EntryIterator
 from typing import Any, SupportsIndex, final
 from typing_extensions import disjoint_base
 
@@ -1269,7 +1270,7 @@ class RegmemRegister:
     @property
     def chamber(self, /) -> str | None: ...
     def get_person_from_id(self, /, person_id: str) -> RegmemPerson: ...
-    def iter_entries(self, /) -> list[tuple[RegmemPerson, RegmemCategory, RegmemEntry, RegmemEntry | None]]:
+    def iter_entries(self, /) -> list[EntryIterator]:
         """
         Iterate (person, category, entry, parent_entry) for every entry and
         sub-entry, mirroring upstream `iter_entries`.
