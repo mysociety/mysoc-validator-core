@@ -1,17 +1,18 @@
-//! Top-level transcript wrapper and Python class registration.
+//! Top-level transcript wrapper and exports for declarative module registration.
 
 mod files;
 mod items;
-use files::{filesystem_path, validate_transcript_folder};
-use items::{
-    item_to_python, PyAgreement, PyDivision, PyDivisionCount, PyGidRedirect, PyMajorHeading,
-    PyMinorHeading, PyMotion, PyMspName, PyOralHeading, PyQuestion, PyRepList, PyRepName, PyReply,
-    PySource, PySpeech, PySpeechItem,
+use files::filesystem_path;
+pub(crate) use files::validate_transcript_folder;
+use items::{item_to_python, PyTranscriptItem};
+pub(crate) use items::{
+    PyAgreement, PyDivision, PyDivisionCount, PyGidRedirect, PyMajorHeading, PyMinorHeading,
+    PyMotion, PyMspName, PyOralHeading, PyQuestion, PyRepList, PyRepName, PyReply, PySource,
+    PySpeech, PySpeechItem,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use pyo3::IntoPyObjectExt;
 use transcript_validator::{Transcript, TranscriptError};
 
 fn validation_error(errors: Vec<TranscriptError>) -> PyErr {
@@ -61,7 +62,7 @@ impl PyTranscript {
     }
 
     #[getter]
-    fn items(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<PyTranscriptItem>> {
         self.transcript
             .items
             .iter()
@@ -69,27 +70,35 @@ impl PyTranscript {
             .collect()
     }
 
-    fn iter_speeches(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn iter_speeches(&self, py: Python<'_>) -> PyResult<Vec<Py<PySpeech>>> {
         self.transcript
             .items
             .iter()
             .filter(|item| item.tag == "speech")
-            .map(|item| item_to_python(py, item))
+            .map(|item| Py::new(py, PySpeech { item: item.clone() }))
             .collect()
     }
 
-    fn iter_type(&self, py: Python<'_>, item_type: &Bound<'_, PyType>) -> PyResult<Vec<Py<PyAny>>> {
+    #[pyo3(signature = (item_type: "type[Any]"))]
+    fn iter_type(
+        &self,
+        py: Python<'_>,
+        item_type: &Bound<'_, PyType>,
+    ) -> PyResult<Vec<PyTranscriptItem>> {
         let mut matching = Vec::new();
         for item in &self.transcript.items {
             let object = item_to_python(py, item)?;
-            if object.bind(py).is_instance(item_type)? {
+            if pyo3::IntoPyObjectExt::into_py_any(&object, py)?
+                .bind(py)
+                .is_instance(item_type)?
+            {
                 matching.push(object);
             }
         }
         Ok(matching)
     }
 
-    fn iter_has_text(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+    fn iter_has_text(&self, py: Python<'_>) -> PyResult<Vec<PyTranscriptItem>> {
         self.transcript
             .items
             .iter()
@@ -98,58 +107,43 @@ impl PyTranscript {
             .collect()
     }
 
-    fn iter_headed_speeches(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
-        let mut major: Option<Py<PyAny>> = None;
-        let mut minor: Option<Py<PyAny>> = None;
+    fn iter_headed_speeches(
+        &self,
+        py: Python<'_>,
+    ) -> PyResult<
+        Vec<(
+            Option<Py<PyMajorHeading>>,
+            Option<Py<PyMinorHeading>>,
+            Py<PySpeech>,
+            i64,
+        )>,
+    > {
+        let mut major: Option<Py<PyMajorHeading>> = None;
+        let mut minor: Option<Py<PyMinorHeading>> = None;
         let mut speech_index: i64 = -1;
         let mut results = Vec::new();
         for item in &self.transcript.items {
             match item.tag.as_str() {
                 "major-heading" => {
-                    major = Some(item_to_python(py, item)?);
+                    major = Some(Py::new(py, PyMajorHeading { item: item.clone() })?);
                     minor = None;
                 }
                 "minor-heading" => {
-                    minor = Some(item_to_python(py, item)?);
+                    minor = Some(Py::new(py, PyMinorHeading { item: item.clone() })?);
                     speech_index = -1;
                 }
                 "speech" => {
                     speech_index += 1;
-                    results.push(
-                        (
-                            major.as_ref().map(|value| value.clone_ref(py)),
-                            minor.as_ref().map(|value| value.clone_ref(py)),
-                            item_to_python(py, item)?,
-                            speech_index,
-                        )
-                            .into_py_any(py)?,
-                    );
+                    results.push((
+                        major.as_ref().map(|value| value.clone_ref(py)),
+                        minor.as_ref().map(|value| value.clone_ref(py)),
+                        Py::new(py, PySpeech { item: item.clone() })?,
+                        speech_index,
+                    ));
                 }
                 _ => {}
             }
         }
         Ok(results)
     }
-}
-
-pub fn register_transcript_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<PyTranscript>()?;
-    module.add_class::<PySpeech>()?;
-    module.add_class::<PyDivision>()?;
-    module.add_class::<PyGidRedirect>()?;
-    module.add_class::<PyOralHeading>()?;
-    module.add_class::<PyMajorHeading>()?;
-    module.add_class::<PyMinorHeading>()?;
-    module.add_class::<PyAgreement>()?;
-    module.add_class::<PySource>()?;
-    module.add_class::<PyQuestion>()?;
-    module.add_class::<PyReply>()?;
-    module.add_class::<PySpeechItem>()?;
-    module.add_class::<PyDivisionCount>()?;
-    module.add_class::<PyMspName>()?;
-    module.add_class::<PyRepName>()?;
-    module.add_class::<PyRepList>()?;
-    module.add_class::<PyMotion>()?;
-    module.add_function(wrap_pyfunction!(validate_transcript_folder, module)?)?;
-    Ok(())
 }

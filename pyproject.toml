@@ -5,7 +5,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "ipykernel>=6.29.5",
-    "maturin>=1.7.4",
+    "maturin>=1.16,<1.17",
     "pip>=24.2",
     "pytest>=8.3.3",
+    "mypy>=2.4.1,<2.5",
+    "typing-extensions>=4.16",
 ]

@@ -5,23 +5,19 @@ use fuzzy_date::FuzzyDate;
 use popolo_validator::{NameType, NiceName};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[gen_stub_pyclass]
 #[pyclass(name = "LordName", from_py_object)]
 #[derive(Clone)]
 pub struct PyLordName {
     inner: popolo_validator::LordName,
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "BasicPersonName", from_py_object)]
 #[derive(Clone)]
 pub struct PyBasicPersonName {
     inner: popolo_validator::BasicPersonName,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyBasicPersonName {
     #[new]
@@ -47,14 +43,12 @@ impl PyBasicPersonName {
     }
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "AltName", from_py_object)]
 #[derive(Clone)]
 pub struct PyAltName {
     inner: popolo_validator::AltName,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyAltName {
     #[new]
@@ -78,7 +72,6 @@ impl PyAltName {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyLordName {
     #[new]

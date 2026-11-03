@@ -9,7 +9,7 @@ use chrono::NaiveDate;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+
 use regmem_validator as rv;
 use std::sync::{Arc, RwLock};
 
@@ -17,7 +17,6 @@ use super::values::{content_type_from_str, detail_value_to_py, py_to_detail_valu
 use super::values::{PyRegmemAnnotation, PyRegmemDetail, PyRegmemDetailGroup};
 use super::SharedRegister;
 
-#[gen_stub_pyclass]
 #[pyclass(name = "RegmemEntry", from_py_object)]
 #[derive(Clone)]
 pub struct PyRegmemEntry {
@@ -51,7 +50,6 @@ impl PyRegmemEntry {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyRegmemEntry {
     #[new]
@@ -268,7 +266,7 @@ impl PyRegmemEntry {
         }
     }
 
-    #[pyo3(signature = (reduce=None))]
+    #[pyo3(signature = (reduce: "dict[str, list[str]] | None"=None) -> "dict[str, Any]")]
     fn details_dict(
         &self,
         py: Python<'_>,
@@ -330,7 +328,7 @@ impl PyRegmemEntry {
     }
 
     /// Add scalar key/value details (mirrors upstream `add_details`).
-    #[pyo3(signature = (*, source=None, **values))]
+    #[pyo3(signature = (*, source=None, **values: "Any"))]
     fn add_details(
         &mut self,
         source: Option<String>,

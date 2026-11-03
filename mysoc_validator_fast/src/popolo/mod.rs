@@ -1,4 +1,4 @@
-//! Popolo ownership, top-level Python operations and class registration.
+//! Popolo ownership and top-level Python operations.
 //!
 //! `Arc` is shared ownership: cloning it keeps the same dataset alive rather
 //! than copying the records. `RwLock` grants either readers or one writer; a
@@ -25,7 +25,7 @@ use popolo_validator::{MembershipType, PersonType, Popolo};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+
 use std::sync::{Arc, RwLock};
 
 mod accessors;
@@ -45,13 +45,11 @@ pub use self::organization::{PyOrganization, PyOrganizationCollection};
 pub use self::person::{PyPerson, PyPersonCollection, PyPersonRedirect};
 pub use self::post::{PyArea, PyPost, PyPostCollection};
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Popolo", subclass)]
 pub struct PyPopolo {
     shared: SharedPopolo,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyPopolo {
     #[classmethod]
@@ -185,24 +183,4 @@ impl PyPopolo {
             .unwrap()
             .find_person_id_by_identifier(identifier, scheme)
     }
-}
-
-pub(crate) fn register_popolo_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyLordName>()?;
-    m.add_class::<PyBasicPersonName>()?;
-    m.add_class::<PyAltName>()?;
-    m.add_class::<PyExtra>()?;
-    m.add_class::<PyPopolo>()?;
-    m.add_class::<PyMembership>()?;
-    m.add_class::<PyMembershipRedirect>()?;
-    m.add_class::<PyPerson>()?;
-    m.add_class::<PyPersonRedirect>()?;
-    m.add_class::<PyOrganization>()?;
-    m.add_class::<PyArea>()?;
-    m.add_class::<PyPost>()?;
-    m.add_class::<PyMembershipCollection>()?;
-    m.add_class::<PyPersonCollection>()?;
-    m.add_class::<PyOrganizationCollection>()?;
-    m.add_class::<PyPostCollection>()?;
-    Ok(())
 }

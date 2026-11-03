@@ -16,8 +16,6 @@ use std::str::FromStr;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 #[cfg(feature = "python")]
-use pyo3_stub_gen::derive::gen_stub_pyclass;
-#[cfg(feature = "python")]
 mod python;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,10 +103,6 @@ fn determine_completeness(date: &str) -> DateCompleteness {
     }
 }
 
-#[cfg_attr(
-    feature = "python",
-    gen_stub_pyclass(module = "mysoc_validator_fast._mysoc_validator_fast")
-)]
 #[cfg_attr(
     feature = "python",
     pyclass(subclass, module = "fuzzy_date", from_py_object)

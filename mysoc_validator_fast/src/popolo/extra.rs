@@ -8,15 +8,12 @@
 use crate::conversions::json_value_to_py;
 use pyo3::exceptions::PyKeyError;
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Extra")]
 pub struct PyExtra {
     owner: Py<PyAny>,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyExtra {
     fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
@@ -45,6 +42,7 @@ impl PyExtra {
         }
     }
 
+    #[pyo3(signature = () -> "dict[str, Any]")]
     fn model_dump(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         self.owner.call_method0(py, "_extra_dict")
     }

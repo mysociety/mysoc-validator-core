@@ -11,9 +11,7 @@ use chrono::{Datelike, NaiveDate};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyType};
-use pyo3_stub_gen::derive::gen_stub_pymethods;
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl FuzzyDate {
     #[new]

@@ -8,22 +8,24 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3::IntoPyObjectExt;
 use std::collections::BTreeMap;
 use transcript_validator::{validate_gid, TranscriptItem};
 
 macro_rules! transcript_item_class {
     ($rust_name:ident, $python_name:literal) => {
+        transcript_item_class!($rust_name, $python_name, BTreeMap<String, String>, markup_content);
+    };
+    ($rust_name:ident, $python_name:literal, $content_type:ty, $content:ident) => {
         #[pyclass(name = $python_name, from_py_object)]
         #[derive(Clone)]
         pub struct $rust_name {
-            item: TranscriptItem,
+            pub(super) item: TranscriptItem,
         }
 
         #[pymethods]
         impl $rust_name {
             #[new]
-            #[pyo3(signature = (id=None, content=None, items=None, **attributes))]
+            #[pyo3(signature = (id=None, content=None, items=None, **attributes: "Any"))]
             fn new(
                 id: Option<String>,
                 content: Option<&Bound<'_, PyAny>>,
@@ -90,24 +92,8 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn content(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-                if $python_name == "DivisionCount" {
-                    return Ok(self
-                        .item
-                        .content
-                        .text
-                        .trim()
-                        .parse::<i64>()
-                        .ok()
-                        .into_py_any(py)?);
-                }
-                if matches!($python_name, "MSPName" | "RepName") {
-                    return Ok(self.item.content.text.clone().into_py_any(py)?);
-                }
-                let content = PyDict::new(py);
-                content.set_item("text", &self.item.content.text)?;
-                content.set_item("raw", &self.item.content.raw)?;
-                Ok(content.into())
+            fn content(&self) -> $content_type {
+                $content(&self.item)
             }
 
             #[getter]
@@ -296,17 +282,17 @@ macro_rules! transcript_item_class {
             }
 
             #[getter]
-            fn count(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+            fn count(&self, py: Python<'_>) -> PyResult<Option<Py<PyDivisionCount>>> {
                 self.item
                     .children
                     .iter()
                     .find(|child| child.tag == "divisioncount")
-                    .map(|child| item_to_python(py, child))
+                    .map(|child| Py::new(py, PyDivisionCount { item: child.clone() }))
                     .transpose()
             }
 
             #[getter]
-            fn representatives(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+            fn representatives(&self, py: Python<'_>) -> PyResult<Vec<Py<PyRepList>>> {
                 self.item
                     .children
                     .iter()
@@ -316,33 +302,34 @@ macro_rules! transcript_item_class {
                             "replist" | "mplist" | "msplist" | "mslist" | "mlalist" | "lordlist"
                         )
                     })
-                    .map(|child| item_to_python(py, child))
+                    .map(|child| Py::new(py, PyRepList { item: child.clone() }))
                     .collect()
             }
 
             #[getter]
-            fn rel_motions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+            fn rel_motions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyMotion>>> {
                 self.item
                     .children
                     .iter()
                     .filter(|child| child.tag == "motion")
-                    .map(|child| item_to_python(py, child))
+                    .map(|child| Py::new(py, PyMotion { item: child.clone() }))
                     .collect()
             }
 
+            #[pyo3(signature = () -> "dict[str, Any]")]
             fn model_dump(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
                 let result = PyDict::new(py);
                 result.set_item("@tag", &self.item.tag)?;
                 for (key, value) in &self.item.attributes {
                     result.set_item(key, value)?;
                 }
-                result.set_item("content", self.content(py)?)?;
+                result.set_item("content", self.content())?;
                 result.set_item("items", self.items(py)?)?;
                 Ok(result.into())
             }
 
             #[getter]
-            fn items(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+            fn items(&self, py: Python<'_>) -> PyResult<Vec<PyTranscriptItem>> {
                 self.item
                     .children
                     .iter()
@@ -376,36 +363,75 @@ transcript_item_class!(PySource, "Source");
 transcript_item_class!(PyQuestion, "Question");
 transcript_item_class!(PyReply, "Reply");
 transcript_item_class!(PySpeechItem, "SpeechItem");
-transcript_item_class!(PyDivisionCount, "DivisionCount");
-transcript_item_class!(PyMspName, "MSPName");
-transcript_item_class!(PyRepName, "RepName");
+transcript_item_class!(PyDivisionCount, "DivisionCount", Option<i64>, count_content);
+transcript_item_class!(PyMspName, "MSPName", String, text_content);
+transcript_item_class!(PyRepName, "RepName", String, text_content);
 transcript_item_class!(PyRepList, "RepList");
 transcript_item_class!(PyMotion, "Motion");
 
-pub(super) fn item_to_python(py: Python<'_>, item: &TranscriptItem) -> PyResult<Py<PyAny>> {
+/// The concrete Python classes returned by heterogeneous transcript collections.
+#[derive(IntoPyObject, IntoPyObjectRef)]
+pub(super) enum PyTranscriptItem {
+    Speech(Py<PySpeech>),
+    Division(Py<PyDivision>),
+    GidRedirect(Py<PyGidRedirect>),
+    OralHeading(Py<PyOralHeading>),
+    MajorHeading(Py<PyMajorHeading>),
+    MinorHeading(Py<PyMinorHeading>),
+    Agreement(Py<PyAgreement>),
+    Source(Py<PySource>),
+    Question(Py<PyQuestion>),
+    Reply(Py<PyReply>),
+    SpeechItem(Py<PySpeechItem>),
+    DivisionCount(Py<PyDivisionCount>),
+    MspName(Py<PyMspName>),
+    RepName(Py<PyRepName>),
+    RepList(Py<PyRepList>),
+    Motion(Py<PyMotion>),
+}
+
+fn markup_content(item: &TranscriptItem) -> BTreeMap<String, String> {
+    BTreeMap::from([
+        ("text".to_owned(), item.content.text.clone()),
+        ("raw".to_owned(), item.content.raw.clone()),
+    ])
+}
+
+fn count_content(item: &TranscriptItem) -> Option<i64> {
+    item.content.text.trim().parse().ok()
+}
+
+fn text_content(item: &TranscriptItem) -> String {
+    item.content.text.clone()
+}
+
+pub(super) fn item_to_python(py: Python<'_>, item: &TranscriptItem) -> PyResult<PyTranscriptItem> {
     macro_rules! create_item {
-        ($type:ident) => {
-            Ok(Py::new(py, $type { item: item.clone() })?.into_py_any(py)?)
+        ($type:ident, $variant:ident) => {
+            Ok(PyTranscriptItem::$variant(Py::new(
+                py,
+                $type { item: item.clone() },
+            )?))
         };
     }
     match item.tag.as_str() {
-        "speech" => create_item!(PySpeech),
-        "division" => create_item!(PyDivision),
-        "gidredirect" => create_item!(PyGidRedirect),
-        "oral-heading" => create_item!(PyOralHeading),
-        "major-heading" => create_item!(PyMajorHeading),
-        "minor-heading" => create_item!(PyMinorHeading),
-        "agreement" => create_item!(PyAgreement),
-        "source" => create_item!(PySource),
-        "ques" => create_item!(PyQuestion),
-        "reply" => create_item!(PyReply),
-        "divisioncount" => create_item!(PyDivisionCount),
-        "mspname" => create_item!(PyMspName),
-        "repname" | "mpname" | "msname" | "mlaname" | "lord" => create_item!(PyRepName),
+        "speech" => create_item!(PySpeech, Speech),
+        "division" => create_item!(PyDivision, Division),
+        "gidredirect" => create_item!(PyGidRedirect, GidRedirect),
+        "oral-heading" => create_item!(PyOralHeading, OralHeading),
+        "major-heading" => create_item!(PyMajorHeading, MajorHeading),
+        "minor-heading" => create_item!(PyMinorHeading, MinorHeading),
+        "agreement" => create_item!(PyAgreement, Agreement),
+        "source" => create_item!(PySource, Source),
+        "ques" => create_item!(PyQuestion, Question),
+        "reply" => create_item!(PyReply, Reply),
+        "divisioncount" => create_item!(PyDivisionCount, DivisionCount),
+        "mspname" => create_item!(PyMspName, MspName),
+        "repname" | "mpname" | "msname" | "mlaname" | "lord" => create_item!(PyRepName, RepName),
         "replist" | "mplist" | "msplist" | "mslist" | "mlalist" | "lordlist" => {
-            create_item!(PyRepList)
+            create_item!(PyRepList, RepList)
         }
-        "motion" => create_item!(PyMotion),
-        _ => create_item!(PySpeechItem),
+        "motion" => create_item!(PyMotion, Motion),
+        _ => create_item!(PySpeechItem, SpeechItem),
     }
 }

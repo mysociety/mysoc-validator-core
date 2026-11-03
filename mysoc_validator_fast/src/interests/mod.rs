@@ -15,24 +15,11 @@
 //! Details, annotations and summaries are detached values. Detail groups can be
 //! standalone values or live views of an entry's details; see `values`.
 
-use pyo3::prelude::*;
 use std::sync::{Arc, RwLock};
 type SharedRegister = Arc<RwLock<regmem_validator::RegmemRegister>>;
 mod values;
-use values::{PyRegmemAnnotation, PyRegmemDetail, PyRegmemDetailGroup, PyRegmemSummary};
+pub(crate) use values::{PyRegmemAnnotation, PyRegmemDetail, PyRegmemDetailGroup, PyRegmemSummary};
 mod entries;
-use entries::PyRegmemEntry;
+pub(crate) use entries::PyRegmemEntry;
 mod register;
-use register::{PyRegmemCategory, PyRegmemPerson, PyRegmemRegister};
-
-pub(crate) fn register_interests_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyRegmemAnnotation>()?;
-    m.add_class::<PyRegmemDetail>()?;
-    m.add_class::<PyRegmemDetailGroup>()?;
-    m.add_class::<PyRegmemSummary>()?;
-    m.add_class::<PyRegmemEntry>()?;
-    m.add_class::<PyRegmemCategory>()?;
-    m.add_class::<PyRegmemPerson>()?;
-    m.add_class::<PyRegmemRegister>()?;
-    Ok(())
-}
+pub(crate) use register::{PyRegmemCategory, PyRegmemPerson, PyRegmemRegister};

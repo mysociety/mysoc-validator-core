@@ -15,7 +15,6 @@ use super::SharedPopolo;
 use crate::conversions::{json_value_to_py, py_to_json_value};
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 
 enum AreaState {
     Standalone(popolo_validator::Area),
@@ -25,7 +24,6 @@ enum AreaState {
     },
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Area")]
 pub struct PyArea {
     inner: AreaState,
@@ -70,7 +68,6 @@ impl PyArea {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyArea {
     #[new]
@@ -111,7 +108,6 @@ enum PostState {
     Handle { shared: SharedPopolo, id: String },
 }
 
-#[gen_stub_pyclass]
 #[pyclass(name = "Post")]
 pub struct PyPost {
     inner: PostState,
@@ -155,7 +151,6 @@ impl PyPost {
     }
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyPost {
     #[new]
@@ -263,13 +258,11 @@ standalone_model_methods!(
 
 // PostCollection
 
-#[gen_stub_pyclass]
 #[pyclass(name = "PostCollection")]
 pub struct PyPostCollection {
     shared: SharedPopolo,
 }
 
-#[gen_stub_pymethods]
 #[pymethods]
 impl PyPostCollection {
     pub(super) fn __getitem__(&self, py: Python<'_>, id: &str) -> PyResult<Py<PyPost>> {
