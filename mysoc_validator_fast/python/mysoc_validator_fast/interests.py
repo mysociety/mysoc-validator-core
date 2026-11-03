@@ -13,24 +13,35 @@ Rust types under the names expected by callers.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar, Iterator, NamedTuple, Type, Union
+from typing import ClassVar, NamedTuple
 
-from .consts import Chamber, CommonKey
-
-# ---------------------------------------------------------------------------
-# Import from the compiled Rust extension
-# ---------------------------------------------------------------------------
-from ._mysoc_validator_fast import (  # type: ignore[import]
+from ._mysoc_validator_fast import (
     RegmemAnnotation as _RustRegmemAnnotation,
+)
+from ._mysoc_validator_fast import (
     RegmemCategory as _RustRegmemCategory,
+)
+from ._mysoc_validator_fast import (
     RegmemDetail as _RustRegmemDetail,
+)
+from ._mysoc_validator_fast import (
     RegmemDetailGroup as _RustRegmemDetailGroup,
+)
+from ._mysoc_validator_fast import (
     RegmemEntry as _RustRegmemEntry,
+)
+from ._mysoc_validator_fast import (
     RegmemPerson as _RustRegmemPerson,
+)
+from ._mysoc_validator_fast import (
     RegmemRegister as _RustRegmemRegister,
+)
+from ._mysoc_validator_fast import (
     RegmemSummary as _RustRegmemSummary,
 )
+from .consts import Chamber, CommonKey
 
 # Re-export Rust types under their expected names.
 RegmemAnnotation = _RustRegmemAnnotation
@@ -72,20 +83,24 @@ class RegmemRegister(_RustRegmemRegister):
     Extends the Rust base with Python-level file I/O helpers.
     """
 
-    Chamber: ClassVar[Type[Chamber]] = Chamber
-    CommonKey: ClassVar[Type[CommonKey]] = CommonKey
+    Chamber: ClassVar[type[Chamber]] = Chamber
+    CommonKey: ClassVar[type[CommonKey]] = CommonKey
 
     @classmethod
     def from_path(
         cls,
-        path: Union[Path, str],
+        path: Path | str,
         cross_validate: bool = True,
-    ) -> "RegmemRegister":
-        """Load and validate a register from a JSON file."""
+    ) -> RegmemRegister:
+        """
+        Load and validate a register from a JSON file.
+        """
         return cls.model_validate_json(Path(path).read_text(), cross_validate)
 
-    def to_path(self, path: Union[Path, str], full: bool = False) -> None:
-        """Write the register to a JSON file."""
+    def to_path(self, path: Path | str, full: bool = False) -> None:
+        """
+        Write the register to a JSON file.
+        """
 
         content = self.model_dump_json()
         if not full:
