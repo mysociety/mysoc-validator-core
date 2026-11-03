@@ -64,7 +64,7 @@ def test_validate_popolo_url(monkeypatch):
         text = json.dumps(VALID_POPOLO)
 
     monkeypatch.setattr(
-        "mysoc_validator_fast.popolo.requests.get", lambda _url: Response()
+        "requests.get", lambda _url: Response()
     )
     result = runner.invoke(
         app, ["popolo", "validate", "https://example.com/people.json"]
@@ -99,7 +99,7 @@ def test_download_popolo(monkeypatch, tmp_path: Path):
         text = json.dumps(VALID_POPOLO)
 
     monkeypatch.setattr(
-        "mysoc_validator_fast.popolo.requests.get", lambda _url: Response()
+        "requests.get", lambda _url: Response()
     )
     destination = tmp_path / "downloaded.json"
     result = runner.invoke(

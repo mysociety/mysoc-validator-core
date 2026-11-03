@@ -16,8 +16,6 @@ from datetime import date
 from pathlib import Path
 from typing import ClassVar, Iterator, List, Optional, Type, Union
 
-import requests
-
 from .consts import Chamber, IdentifierScheme, MembershipReason
 from .dates import ApproxDate, FixedDate
 
@@ -121,6 +119,8 @@ class Popolo(_RustPopolo):
         cross_validate: bool = True,
     ) -> "Popolo":
         """Load from a URL (or list of URLs — extras merged in)."""
+        import requests
+
         if isinstance(url, str):
             urls = [url]
         else:

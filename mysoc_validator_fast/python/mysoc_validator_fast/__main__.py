@@ -152,7 +152,9 @@ def add_alt_name(
         end_date=end_date,
     )
     added_name = one_name or f"{given_name} {family_name}"
-    rich.print(f"[green]Added alternative name {added_name} for {person_id}[/green]")
+    typer.secho(
+        f"Added alternative name {added_name} for {person_id}", fg=typer.colors.GREEN
+    )
     popolo.to_path(path)
 
 
@@ -174,7 +176,9 @@ def change_name(
     popolo = Popolo.from_path(path)
     person = popolo.persons[person_id]
     person.change_main_name(given_name, family_name, change_date or date.today())
-    rich.print(f"[green]Changed name for {person_id} to {given_name} {family_name}[/green]")
+    typer.secho(
+        f"Changed name for {person_id} to {given_name} {family_name}", fg=typer.colors.GREEN
+    )
     popolo.to_path(path)
 
 
@@ -203,7 +207,7 @@ def ennoble(
         lordofname_full=lordofname_full,
         change_date=change_date or date.today(),
     )
-    rich.print(f"[green]Ennobled {person_id}[/green]")
+    typer.secho(f"Ennobled {person_id}", fg=typer.colors.GREEN)
     popolo.to_path(path)
 
 
@@ -233,7 +237,7 @@ def change_party(
         change_reason,
         source_url,
     )
-    rich.print(f"[green]Changed party for {person_id} to {new_party_id}[/green]")
+    typer.secho(f"Changed party for {person_id} to {new_party_id}", fg=typer.colors.GREEN)
     popolo.to_path(path)
 
 
@@ -258,7 +262,7 @@ def remove_whip(
         MembershipReason.WHIP_REMOVED,
         source_url,
     )
-    rich.print(f"[green]Removed whip for {person_id}[/green]")
+    typer.secho(f"Removed whip for {person_id}", fg=typer.colors.GREEN)
     popolo.to_path(path)
 
 
@@ -294,7 +298,7 @@ def restore_whip(
         MembershipReason.WHIP_RESTORED,
         source_url,
     )
-    rich.print(f"[green]Restored whip for {person_id}[/green]")
+    typer.secho(f"Restored whip for {person_id}", fg=typer.colors.GREEN)
     popolo.to_path(path)
 
 
@@ -323,10 +327,10 @@ def validate_popolo_file(file: Path, format_file: bool = False) -> None:
         raise typer.Exit(code=1) from error
 
     print_counts(people)
-    rich.print(f"[green]Valid Popolo file {file}[/green]")
+    typer.secho(f"Valid Popolo file {file}", fg=typer.colors.GREEN)
     if format_file:
         people.to_path(file)
-        rich.print(f"[green]Formatted Popolo file saved to {file}[/green]")
+        typer.secho(f"Formatted Popolo file saved to {file}", fg=typer.colors.GREEN)
 
 
 def validate_popolo_url_file(url: str) -> None:
@@ -342,7 +346,7 @@ def validate_popolo_url_file(url: str) -> None:
         raise typer.Exit(code=1) from error
 
     print_counts(people)
-    rich.print("[green]Valid Popolo file[/green]")
+    typer.secho("Valid Popolo file", fg=typer.colors.GREEN)
 
 
 @popolo_app.command(name="format")
@@ -368,7 +372,7 @@ def download(
     except Exception as error:
         typer.echo(f"Error: {error}")
         raise typer.Exit(code=1) from error
-    rich.print(f"[green]Popolo file saved to {file}[/green]")
+    typer.secho(f"Popolo file saved to {file}", fg=typer.colors.GREEN)
 
 
 @popolo_app.command(name="validate")
@@ -397,7 +401,7 @@ def validate_interests_json(file: Path, quiet_success: bool = False) -> bool:
         rich.print(f"[red]Invalid Interests file: {file}[/red]")
         return False
     if not quiet_success:
-        rich.print(f"[green]Valid Interests file: {file}[/green]")
+        typer.secho(f"Valid Interests file: {file}", fg=typer.colors.GREEN)
     return True
 
 
@@ -469,7 +473,7 @@ def validate_transcript_cmd(file: str, glob: bool = False) -> None:
         typer.echo(f"Error: {error}")
         rich.print(f"[red]Invalid Transcript file: {path}[/red]")
         raise typer.Exit(code=1) from error
-    rich.print(f"[green]Valid Transcript file: {path}[/green]")
+    typer.secho(f"Valid Transcript file: {path}", fg=typer.colors.GREEN)
 
 
 @transcript_app.command(name="validate-folder")
