@@ -5,13 +5,12 @@ build-backend = "maturin"
 [project]
 name = "mysoc-validator-fast"
 version = "0.2.2"
-description = "Fast, Rust-backed Popolo data for Python — drop-in replacement for mysoc_validator"
+description = "Rust-backed validators for mySociety Popolo, transcript and interests data"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2", "requests", "rich>=10,<14", "typer>=0.12", "typing-extensions>=4.16"]
 
 [project.scripts]
-mysoc-validator = "mysoc_validator_fast.__main__:app"
-msv = "mysoc_validator_fast.__main__:app"
 mysoc-validator-fast = "mysoc_validator_fast.__main__:app"
 msv-fast = "mysoc_validator_fast.__main__:app"
 
