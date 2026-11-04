@@ -164,7 +164,24 @@ Use `script/version patch --dry-run` to preview the change. The script uses
 only previews the version bump. It can be invoked from any working directory.
 
 Commit the manifest and `Cargo.lock` together. Existing CI builds use `--locked`
-to catch a stale lockfile.
+to catch a stale lockfile. The publish workflow reads the version directly from
+the crate manifest.
+
+On a push to `main`, the Publish workflow checks for `v<version>`. If it already
+exists, automatic publication is skipped. If it is missing, the workflow runs
+the tests, builds and smoke-tests the distributions, pushes the tag pointing to
+the tested commit, then publishes to PyPI through the existing `release`
+environment. It never moves an existing tag. A manually pushed release tag must
+match the crate version.
+
+Tagging and publication continue in the same workflow run: tags pushed using
+GitHub's built-in token do not trigger another workflow. No additional token is
+needed. The tag job has `contents: write`; publication retains trusted publishing
+and the existing environment controls.
+
+To retry a failed publication, rerun the failed jobs or dispatch Publish on the
+release tag. Dispatching on a branch builds and tests without publishing, except
+on `main` when its canonical version has no tag.
 
 ### Run the CLI via Cargo
 

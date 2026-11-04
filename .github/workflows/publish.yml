@@ -2,14 +2,62 @@ name: Publish
 
 on:
   push:
-    tags: ["*"]
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.11"
+      - name: Plan release from the crate version
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(python -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("mysoc_validator_fast/Cargo.toml").read_text())["package"]["version"])')
+          tag="v$version"
+          git check-ref-format "refs/tags/$tag"
+          build=false
+          publish=false
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            if [[ "$GITHUB_REF" != "refs/tags/$tag" ]]; then
+              echo "Tag $GITHUB_REF does not match the canonical version $tag" >&2
+              exit 1
+            fi
+            build=true
+            publish=true
+          elif [[ "$GITHUB_REF" == refs/heads/main ]] && ! git show-ref --verify --quiet "refs/tags/$tag"; then
+            build=true
+            publish=true
+          elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            build=true
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Release $tag: build=$build publish=$publish"
+
   tests:
+    needs: [version]
+    if: needs.version.outputs.build == 'true'
     uses: ./.github/workflows/test.yml
 
   wheels:
@@ -90,9 +138,35 @@ jobs:
           python -c "import mysoc_validator_fast"
           mysoc-validator-fast --help
 
+  tag:
+    if: needs.version.outputs.publish == 'true'
+    needs: [version, wheels, sdist, smoke-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - name: Ensure the release tag points to this commit
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/tags/*:refs/tags/*"
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            if [[ "$(git rev-parse "$RELEASE_TAG^{commit}")" != "$(git rev-parse HEAD)" ]]; then
+              echo "Tag $RELEASE_TAG already points to a different commit" >&2
+              exit 1
+            fi
+          else
+            git tag "$RELEASE_TAG" HEAD
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+
   release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [wheels, sdist, smoke-test]
+    needs: [tag]
     runs-on: ubuntu-latest
     environment: release
     permissions:
