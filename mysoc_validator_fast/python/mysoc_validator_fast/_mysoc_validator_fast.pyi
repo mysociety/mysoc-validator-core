@@ -998,7 +998,14 @@ class Popolo:
     def posts(self, /) -> PostCollection: ...
     def to_json_str(self, /) -> str: ...
     def to_path(self, /, path: Any) -> None: ...
-    def update(self, /, other: Popolo) -> Popolo: ...
+    def update(self, /, other: Popolo) -> Popolo:
+        """
+        Add another dataset in dependency order, validating each collection.
+
+        Duplicate IDs, invalid references and overlaps with existing memberships
+        raise ValueError. As upstream, a failed merge may leave partial changes.
+        Return this dataset; updating it with itself is a no-op.
+        """
 
 @final
 class Post:

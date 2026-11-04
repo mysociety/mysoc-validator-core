@@ -4,6 +4,7 @@ Behavioral boundaries that must survive the Rust module refactoring.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from datetime import date
@@ -110,14 +111,22 @@ def test_native_update_with_self_is_a_no_op() -> None:
 
 @pytest.mark.parametrize("collection", ["persons", "memberships"])
 def test_redirect_cycles_raise_key_error(collection: str) -> None:
+    prefix = "uk.org.publicwhip/person" if collection == "persons" else "member"
+    first_id = f"{prefix}/1"
+    second_id = f"{prefix}/2"
     popolo = Popolo.model_validate_json(
-        '{"'
-        + collection
-        + '": [{"id": "a", "redirect": "b"}, {"id": "b", "redirect": "a"}]}',
+        json.dumps(
+            {
+                collection: [
+                    {"id": first_id, "redirect": second_id},
+                    {"id": second_id, "redirect": first_id},
+                ]
+            }
+        ),
         False,
     )
     with pytest.raises(KeyError):
-        _ = getattr(popolo, collection)["a"]
+        _ = getattr(popolo, collection)[first_id]
 
 
 def test_json_conversion_allows_reentrant_model_access() -> None:

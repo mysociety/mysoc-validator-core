@@ -342,6 +342,26 @@ impl ValidDateRange for Popolo {
 }
 
 impl Popolo {
+    /// Check collection uniqueness without requiring references to resolve.
+    pub(crate) fn check_collection_ids(&self) -> Result<(), ValidatorErrorCollection> {
+        let mut errors = Vec::new();
+        for result in [
+            check_unique(&self.persons.root, |p| p.get_id(), "Person"),
+            check_unique(&self.organizations.root, |o| o.get_id(), "Organization"),
+            check_unique(&self.posts.root, |p| p.get_id(), "Post"),
+            check_unique(&self.memberships.root, |m| m.get_id(), "Membership"),
+        ] {
+            if let Err(e) = result {
+                errors.extend(e);
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
     /// Reject adjacent memberships that overlap or share an exact boundary date.
     ///
     /// Group by person and post (falling back to organization), and sort by start
@@ -561,34 +581,37 @@ impl Popolo {
             ));
         }
 
-        if membership.post_id.is_some() || membership.organization_id.is_some() {
-            for mt in self.memberships.iter() {
-                if let MembershipType::Membership(existing) = mt {
-                    if existing.person_id != membership.person_id {
-                        continue;
+        self.check_membership_overlap(membership)
+    }
+
+    /// Check incoming membership bounds against the existing collection only.
+    pub(crate) fn check_membership_overlap(&self, membership: &Membership) -> Result<(), String> {
+        for mt in self.memberships.iter() {
+            if let MembershipType::Membership(existing) = mt {
+                if existing.person_id != membership.person_id {
+                    continue;
+                }
+                let same_scope = match &membership.post_id {
+                    Some(post_id) => existing.post_id.as_ref() == Some(post_id),
+                    None => {
+                        existing.post_id.is_none()
+                            && existing.organization_id == membership.organization_id
                     }
-                    let same_scope = match &membership.post_id {
-                        Some(post_id) => existing.post_id.as_ref() == Some(post_id),
-                        None => {
-                            existing.post_id.is_none()
-                                && existing.organization_id == membership.organization_id
-                        }
-                    };
-                    if !same_scope {
-                        continue;
-                    }
-                    let new_start = &membership.start_date;
-                    let new_end = &membership.end_date;
-                    let ex_start = &existing.start_date;
-                    let ex_end = &existing.end_date;
-                    if new_start.earliest_date <= ex_end.latest_date
-                        && new_end.latest_date >= ex_start.earliest_date
-                    {
-                        return Err(format!(
-                            "New Membership {} overlaps with membership {}",
-                            membership.id, existing.id
-                        ));
-                    }
+                };
+                if !same_scope {
+                    continue;
+                }
+                let new_start = &membership.start_date;
+                let new_end = &membership.end_date;
+                let ex_start = &existing.start_date;
+                let ex_end = &existing.end_date;
+                if new_start.earliest_date <= ex_end.latest_date
+                    && new_end.latest_date >= ex_start.earliest_date
+                {
+                    return Err(format!(
+                        "New Membership {} overlaps with membership {}",
+                        membership.id, existing.id
+                    ));
                 }
             }
         }

@@ -4,8 +4,9 @@
 //! serde implementations live in `models` and `names`; indexed collections,
 //! validation, queries and sentinel dates have separate modules.
 //! Serde builds records and indexes. `model_validate_json` additionally runs
-//! cross-record validation when requested; `serde_json::from_str` alone does not
-//! perform it. This differs from assuming every Pydantic-style construction
+//! record validation and, when requested, cross-record validation;
+//! `serde_json::from_str` alone does not perform it. This differs from assuming
+//! every Pydantic-style construction
 //! automatically applies all model validators.
 
 use crate::validation::ValidatorErrorCollection;
@@ -29,6 +30,7 @@ pub use validation::{ValidatorError, ValidatorType};
 mod queries;
 pub use queries::reduce_to_slug;
 mod dates;
+mod merging;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -64,19 +66,21 @@ impl Popolo {
                 validator_type: ValidatorType::InvalidJson,
             }]
         })?;
+        let mut errors: ValidatorErrorCollection = Vec::new();
         if *validate {
-            let mut errors: ValidatorErrorCollection = Vec::new();
             if let Err(e) = popolo.check_unique_ids() {
                 errors.extend(e);
             }
             if let Err(e) = popolo.check_valid_date_ranges() {
                 errors.extend(e);
             }
-            errors.extend(popolo.is_valid_date_range());
-            errors.extend(popolo.test_regex_values());
-            if !errors.is_empty() {
-                return Err(errors);
-            }
+        } else if let Err(e) = popolo.check_collection_ids() {
+            errors.extend(e);
+        }
+        errors.extend(popolo.is_valid_date_range());
+        errors.extend(popolo.test_regex_values());
+        if !errors.is_empty() {
+            return Err(errors);
         }
         Ok(popolo)
     }

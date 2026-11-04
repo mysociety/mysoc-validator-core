@@ -206,8 +206,15 @@ rules. Removing an organization makes existing handles raise `KeyError` on data
 access; person handles follow redirects after merges.
 
 Parsing and validation are separate. Direct serde construction builds records and
-indexes but does not run Popolo's cross-record checks. Dataset overlap validation
-retains its historical adjacent-pair and approximate-date exclusions; insertion
+indexes but does not run Popolo's validation checks. Disabling cross-validation
+on JSON loads still checks unique IDs, record date ranges and ID formats.
+`Popolo.update()` adds organizations, posts, people and memberships in that order,
+revalidating references after each collection. Duplicate IDs and overlaps with
+existing memberships raise errors; failed merges can leave partial changes,
+matching upstream. Merge overlap checks compare incoming memberships against
+existing ones, rather than against other items in the same incoming batch.
+Dataset overlap validation retains its historical adjacent-pair and
+approximate-date exclusions; insertion
 validation conservatively checks possible overlaps. These policies are explicit
 and are not inferred from Rust date equality.
 
