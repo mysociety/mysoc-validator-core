@@ -42,7 +42,7 @@ jobs:
             --release --locked --compatibility pypi --out dist
             --manifest-path mysoc_validator_fast/Cargo.toml
       - name: Install wheel and test dependencies
-        run: python -m pip install --find-links dist mysoc-validator-fast pytest
+        run: python -m pip install pytest dist/*.whl
       - name: Test Python package
         run: python -m pytest mysoc_validator_fast/tests -q
       - name: Check generated stubs and type contracts
