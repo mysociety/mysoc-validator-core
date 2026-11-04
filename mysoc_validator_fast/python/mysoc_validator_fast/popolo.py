@@ -11,56 +11,44 @@ and re-exports the Rust types under the names expected by callers.
 from __future__ import annotations
 
 import json
-import re
-from datetime import date
+from collections.abc import Sequence
 from pathlib import Path
-from typing import ClassVar, Iterator, List, Optional, Type, Union
+from typing import ClassVar
 
+from ._mysoc_validator_fast import (
+    AltName,
+    Area,
+    BasicPersonName,
+    LordName,
+    Membership,
+    MembershipRedirect,
+    Organization,
+    Person,
+    PersonRedirect,
+    Post,
+)
+from ._mysoc_validator_fast import Popolo as _RustPopolo
 from .consts import Chamber, IdentifierScheme, MembershipReason
 from .dates import ApproxDate, FixedDate
 
-# ---------------------------------------------------------------------------
-# Import from the compiled Rust extension
-# ---------------------------------------------------------------------------
-from ._mysoc_validator_fast import (  # type: ignore[import]
-    AltName as _RustAltName,
-    Area as _RustArea,
-    BasicPersonName as _RustBasicPersonName,
-    LordName as _RustLordName,
-    Membership as _RustMembership,
-    MembershipCollection as _RustMembershipCollection,
-    MembershipRedirect as _RustMembershipRedirect,
-    Organization as _RustOrganization,
-    OrganizationCollection as _RustOrganizationCollection,
-    Person as _RustPerson,
-    PersonCollection as _RustPersonCollection,
-    PersonRedirect as _RustPersonRedirect,
-    Popolo as _RustPopolo,
-    Post as _RustPost,
-    PostCollection as _RustPostCollection,
-)
-
-# Re-export Rust types under their expected names.
-# Users import Membership, Person, etc. from this module.
-Membership = _RustMembership
-AltName = _RustAltName
-Area = _RustArea
-BasicPersonName = _RustBasicPersonName
-LordName = _RustLordName
-MembershipRedirect = _RustMembershipRedirect
-Organization = _RustOrganization
-Person = _RustPerson
-PersonRedirect = _RustPersonRedirect
-Post = _RustPost
-
-NON_ASCII_RE = re.compile(r"[^\x00-\x7F]")
-
-
-def _escape_unicode(text: str) -> str:
-    """Escape non-ASCII characters to \\uXXXX sequences."""
-    def escape(m: re.Match[str]) -> str:
-        return f"\\u{ord(m.group(0)):04x}"
-    return NON_ASCII_RE.sub(escape, text)
+__all__ = [
+    "AltName",
+    "ApproxDate",
+    "Area",
+    "BasicPersonName",
+    "Chamber",
+    "FixedDate",
+    "IdentifierScheme",
+    "LordName",
+    "Membership",
+    "MembershipReason",
+    "MembershipRedirect",
+    "Organization",
+    "Person",
+    "PersonRedirect",
+    "Popolo",
+    "Post",
+]
 
 
 class Popolo(_RustPopolo):
@@ -72,17 +60,15 @@ class Popolo(_RustPopolo):
     """
 
     # Make Chamber accessible as Popolo.Chamber.COMMONS etc.
-    Chamber: ClassVar[Type[Chamber]] = Chamber
-    IdentifierScheme: ClassVar[Type[IdentifierScheme]] = IdentifierScheme
+    Chamber: ClassVar[type[Chamber]] = Chamber
+    IdentifierScheme: ClassVar[type[IdentifierScheme]] = IdentifierScheme
 
     @classmethod
-    def model_validate(cls, value: object) -> "Popolo":
-        """Validate a Python mapping using the Rust Popolo model."""
+    def model_validate(cls, value: object) -> Popolo:
+        """
+        Validate a Python mapping using the Rust Popolo model.
+        """
         return cls.model_validate_json(json.dumps(value))
-
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
 
     @classmethod
     def from_json_str(
@@ -90,17 +76,21 @@ class Popolo(_RustPopolo):
         json_str: str,
         *,
         cross_validate: bool = True,
-    ) -> "Popolo":
-        """Parse and optionally validate a JSON string."""
+    ) -> Popolo:
+        """
+        Parse JSON and optionally run cross-record validation.
+        """
         return cls.model_validate_json(json_str, cross_validate)
 
     @classmethod
     def from_path(
         cls,
-        json_path: Union[Path, List[Path]],
+        json_path: Path | str | Sequence[Path | str],
         cross_validate: bool = True,
-    ) -> "Popolo":
-        """Load from a file path (or list of paths — extras merged in)."""
+    ) -> Popolo:
+        """
+        Load from a file path (or list of paths — extras merged in).
+        """
         if isinstance(json_path, (str, Path)):
             paths = [Path(json_path)]
         else:
@@ -115,10 +105,12 @@ class Popolo(_RustPopolo):
     @classmethod
     def from_url(
         cls,
-        url: Union[str, List[str]],
+        url: str | list[str],
         cross_validate: bool = True,
-    ) -> "Popolo":
-        """Load from a URL (or list of URLs — extras merged in)."""
+    ) -> Popolo:
+        """
+        Load from a URL (or list of URLs — extras merged in).
+        """
         import requests
 
         if isinstance(url, str):
@@ -126,9 +118,13 @@ class Popolo(_RustPopolo):
         else:
             urls = list(url)
 
-        base = cls.from_json_str(requests.get(urls[0]).text, cross_validate=cross_validate)
+        base = cls.from_json_str(
+            requests.get(urls[0]).text, cross_validate=cross_validate
+        )
         for extra_url in urls[1:]:
-            extra_popolo = cls.from_json_str(requests.get(extra_url).text, cross_validate=False)
+            extra_popolo = cls.from_json_str(
+                requests.get(extra_url).text, cross_validate=False
+            )
             base.update(extra_popolo)
         return base
 
@@ -136,39 +132,29 @@ class Popolo(_RustPopolo):
     def from_parlparse(
         cls,
         *,
-        extras: Optional[List[str]] = None,
+        extras: list[str] | None = None,
         branch: str = "master",
-    ) -> "Popolo":
-        """Load from the parlparse GitHub repository."""
-        base_url = f"https://raw.githubusercontent.com/mysociety/parlparse/{branch}/members"
+    ) -> Popolo:
+        """
+        Load from the parlparse GitHub repository.
+        """
+        base_url = (
+            f"https://raw.githubusercontent.com/mysociety/parlparse/{branch}/members"
+        )
         urls = [f"{base_url}/people.json"]
         for extra in extras or []:
             fname = extra if extra.endswith(".json") else extra + ".json"
             urls.append(f"{base_url}/{fname}")
         return cls.from_url(urls)
 
-    # ------------------------------------------------------------------
-    # Serialisation
-    # ------------------------------------------------------------------
-
     def to_json_str(self) -> str:
-        """Serialize to JSON string (unicode-escaped, 2-space indent)."""
+        """
+        Serialize to JSON string (unicode-escaped, 2-space indent).
+        """
         return self.model_dump_json()
 
-    def to_path(self, json_path: Union[Path, str]) -> None:
-        """Write JSON to a file."""
+    def to_path(self, json_path: Path | str) -> None:
+        """
+        Write JSON to a file.
+        """
         Path(json_path).write_text(self.to_json_str())
-
-    # ------------------------------------------------------------------
-    # Mutation helpers
-    # ------------------------------------------------------------------
-
-    def update(self, other: "Popolo") -> "Popolo":
-        """Merge another Popolo into this one (skips duplicates)."""
-        # Iterate raw items from the other popolo and add non-duplicates
-        for item in other.memberships.root:
-            try:
-                self.memberships.append(item)
-            except (ValueError, KeyError):
-                pass
-        return self

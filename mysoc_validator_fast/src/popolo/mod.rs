@@ -21,7 +21,7 @@
 
 use crate::conversions::escape_non_ascii;
 use chrono::NaiveDate;
-use popolo_validator::{MembershipType, PersonType, Popolo};
+use popolo_validator::Popolo;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyType;
@@ -89,6 +89,11 @@ impl PyPopolo {
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
+    /// Add another dataset in dependency order, validating each collection.
+    ///
+    /// Duplicate IDs, invalid references and overlaps with existing memberships
+    /// raise ValueError. As upstream, a failed merge may leave partial changes.
+    /// Return this dataset; updating it with itself is a no-op.
     fn update<'py>(slf: PyRef<'py, Self>, other: PyRef<'_, Self>) -> PyResult<PyRef<'py, Self>> {
         if Arc::ptr_eq(&slf.shared, &other.shared) {
             return Ok(slf);
@@ -96,40 +101,15 @@ impl PyPopolo {
         let other_guard = other.shared.read().unwrap();
         let mut guard = slf.shared.write().unwrap();
 
-        // Preserve merge policy: skip IDs present before this merge, retaining
-        // any duplicates already present in an unvalidated incoming dataset.
-        let membership_ids = guard.memberships.id_lookup.clone();
-        let organization_ids = guard.organizations.id_lookup.clone();
-        let person_ids = guard.persons.id_lookup.clone();
-        let post_ids = guard.posts.id_lookup.clone();
-        for membership in &other_guard.memberships.root {
-            let id = match membership {
-                MembershipType::Membership(membership) => &membership.id,
-                MembershipType::MembershipRedirect(redirect) => &redirect.id,
-            };
-            if !membership_ids.contains_key(id) {
-                guard.memberships.push(membership.clone());
-            }
-        }
-        for organization in &other_guard.organizations.root {
-            if !organization_ids.contains_key(&organization.id) {
-                guard.organizations.push(organization.clone());
-            }
-        }
-        for person in &other_guard.persons.root {
-            let id = match person {
-                PersonType::Person(person) => &person.id,
-                PersonType::PersonRedirect(redirect) => &redirect.id,
-            };
-            if !person_ids.contains_key(id) {
-                guard.persons.push(person.clone());
-            }
-        }
-        for post in &other_guard.posts.root {
-            if !post_ids.contains_key(&post.id) {
-                guard.posts.push(post.clone());
-            }
-        }
+        guard.update(&other_guard).map_err(|errors| {
+            PyValueError::new_err(
+                errors
+                    .iter()
+                    .map(|error| error.error.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        })?;
         drop(guard);
         drop(other_guard);
         Ok(slf)
