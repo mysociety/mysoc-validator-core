@@ -143,6 +143,29 @@ script/stubs
 uv run maturin build --release --locked -m mysoc_validator_fast/Cargo.toml
 ```
 
+### Release a new version
+
+The release version lives in `mysoc_validator_fast/Cargo.toml`. Maturin reads it
+for the Python package through `dynamic = ["version"]`; there is no separate
+Python version to update. Install the version-bumping tool once:
+
+```bash
+cargo install cargo-edit --locked
+```
+
+Then bump the package version and refresh the lockfile:
+
+```bash
+script/version patch  # or minor / major
+```
+
+Use `script/version patch --dry-run` to preview the change. The script uses
+`cargo set-version` and then `cargo check` to refresh `Cargo.lock`; a dry run
+only previews the version bump. It can be invoked from any working directory.
+
+Commit the manifest and `Cargo.lock` together. Existing CI builds use `--locked`
+to catch a stale lockfile.
+
 ### Run the CLI via Cargo
 
 ```bash

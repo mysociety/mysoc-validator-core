@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "mysoc-validator-fast"
-version = "0.2.2"
+dynamic = ["version"]
 description = "Rust-backed validators for mySociety Popolo, transcript and interests data"
 readme = "README.md"
 requires-python = ">=3.11"
